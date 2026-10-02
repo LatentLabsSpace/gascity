@@ -27,6 +27,20 @@ import (
 // (ZFC): it copies a route the bead already declares and never invents a target.
 // Idempotent: a bead that already carries gc.routed_to yields "".
 func carriedPoolRoute(b beads.Bead) string {
+	// A graph-first mint withholds gc.routed_to behind the instantiation fence
+	// (molecule.fenceGraphWorkflowBead): the route sits in gc.deferred_routed_to
+	// and the type is deferred to a gate until every step is wired, and
+	// activation restores them. On such a bead an empty gc.routed_to is
+	// deliberate, not lost, and gc.run_target is the formula's bare pool name,
+	// not a route — restoring it stamps a bare, unclaimable route over the
+	// withheld qualified one, and the restore's read-merge-write can land over
+	// the activation and put the fence back. The same holds for any bead Ready
+	// would never surface: it is not pool work, whatever gc.run_target says.
+	if strings.TrimSpace(b.Metadata[beadmeta.InstantiatingMetadataKey]) != "" ||
+		strings.TrimSpace(b.Metadata[beadmeta.DeferredRoutedToMetadataKey]) != "" ||
+		beads.IsReadyExcludedBead(b) {
+		return ""
+	}
 	// Legacy pre-ga-eld2x workflow root: gc.run_target is the root's pool route
 	// only while gc.routed_to is empty — exactly legacyWorkflowRunTarget's rule.
 	if route := legacyWorkflowRunTarget(b); route != "" {
@@ -156,8 +170,8 @@ func (cr *CityRuntime) runRouteRecoveryBackstop(reason string) routeRecoveryRepo
 	// The convergence lane always says it ran. A clean pass that logs nothing is
 	// indistinguishable from a lane that stopped running, and this one runs on a
 	// background goroutine where nothing else would notice.
-	summary := fmt.Sprintf("pass reason=%s legs=%d reads=%d candidates=%d restored=%d quarantined=%d partial=%t took=%s",
-		reason, report.legs, report.legReads, report.candidates, report.restored, report.quarantined, report.partial,
+	summary := fmt.Sprintf("pass reason=%s legs=%d reads=%d candidates=%d restored=%d quarantined=%d off_plane_routed=%d partial=%t took=%s",
+		reason, report.legs, report.legReads, report.candidates, report.restored, report.quarantined, report.offPlaneRouted, report.partial,
 		report.duration.Round(time.Millisecond))
 	fmt.Fprintf(cr.stderr, "%s: route recovery (backstop): %s\n", cr.logPrefix, summary) //nolint:errcheck // best-effort stderr
 	return report
@@ -267,6 +281,11 @@ func (cr *CityRuntime) logRouteRecovery(report routeRecoveryReport) {
 		flap := fmt.Sprintf("STOPPED re-stamping %d flapping bead(s) after %d restores each (%s); another lane is clearing gc.routed_to — see `gc doctor` route-recovery-quarantine",
 			len(report.flapping), routeRecoveryFlapLimit, strings.Join(report.flapping, " "))
 		fmt.Fprintf(cr.stderr, "%s: route recovery (%s): %s\n", cr.logPrefix, report.lane, flap) //nolint:errcheck // best-effort stderr
+	}
+	if report.offPlaneRouted > 0 {
+		// Loud, because the tick's demand read cannot see these and therefore
+		// spawns nothing for them. The remedy is a migration, not a wider tick.
+		fmt.Fprintf(cr.stderr, "%s: route recovery (%s): %d open routed bead(s) sit on a work leg the runtime plane does not read, so no pool seat is spawned for them; run `gc storage migrate` to move them to the infra binding\n", cr.logPrefix, report.lane, report.offPlaneRouted) //nolint:errcheck // best-effort stderr
 	}
 	if report.quarantined > 0 {
 		fmt.Fprintf(cr.stderr, "%s: route recovery (%s): quarantined %d bead(s) for operator review (`gc doctor` route-recovery-quarantine)\n", cr.logPrefix, report.lane, report.quarantined) //nolint:errcheck // best-effort stderr
