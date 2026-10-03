@@ -164,6 +164,20 @@ type routeRecoveryReport struct {
 	// legs counts the plan legs this pass was allowed to read. A pass reporting
 	// zero legs converged nothing, which must not read as "nothing to converge".
 	legs int
+	// offPlaneRouted counts OPEN, UNASSIGNED, pool-routed beads this pass found
+	// on a leg the RUNTIME plane refuses — the work ledger and the rigs.
+	//
+	// It is the visibility half of the tick's routed-demand narrowing. The
+	// controller's demand read is binding-only (routedWorkStoreCandidates, per
+	// the operator ruling that routed work lives only in the graph store), so a
+	// routed bead sitting on a work leg is demanded by nothing and spawns no
+	// seat. That is a MIGRATION defect rather than a demand bug — the remedy is
+	// `gc storage migrate`, not a wider tick — but a defect nobody can see is
+	// indistinguishable from an empty set, which is exactly the assumption the
+	// narrowing rests on. This lane already reads every leg's open corpus on its
+	// own cadence, so the count costs nothing and makes the assumption checkable.
+	offPlaneRouted int
+
 	// dropped counts named candidates this plane could not resolve. On the
 	// runtime plane it is the DELIVERED-BUT-OFF-PLANE class (§ lane header): the
 	// journal named a bead, the event arrived, and the bead lives on a leg this
@@ -186,6 +200,9 @@ func (r routeRecoveryReport) fields() map[string]any {
 		"leg_reads":   r.legReads,
 		"legs":        r.legs,
 		"quarantined": r.quarantined,
+	}
+	if r.offPlaneRouted > 0 {
+		out["off_plane_routed"] = r.offPlaneRouted
 	}
 	if r.dropped > 0 {
 		// Named, delivered, and not resolvable on this plane — the convergence
@@ -485,6 +502,10 @@ const (
 type planeLeg struct {
 	label string
 	store beads.Store
+	// binding reports whether this leg is a relocated class binding — the only
+	// legs the RUNTIME plane reads. The convergence lane uses it to say which of
+	// the legs it scanned are ones the tick cannot see.
+	binding bool
 }
 
 // planeLegLabel spells a plan leg the way the pre-lane log line did:
@@ -544,7 +565,11 @@ func walkPlaneLegs(plan storeref.ResolvedPlan, plane storePlane, visit func(plan
 		if leg.Store == nil || !planeReadsLeg(plane, leg.Ref, bindingOnly) {
 			return false, nil
 		}
-		return false, visit(planeLeg{label: planeLegLabel(leg.Ref), store: leg.Store})
+		return false, visit(planeLeg{
+			label:   planeLegLabel(leg.Ref),
+			store:   leg.Store,
+			binding: storeref.IsClassRef(string(leg.Ref)),
+		})
 	})
 	return result.Partial, walkErr
 }
@@ -629,11 +654,12 @@ func (l *routeRecoveryLane) backstopPassOnPlane(plan storeref.ResolvedPlan, reas
 	var errs []error
 	partial, walkErr := walkPlaneLegs(plan, plane, func(leg planeLeg) error {
 		report.legs++
-		legReport := l.backstopLeg(leg.store)
+		legReport := l.backstopLeg(leg)
 		report.candidates += legReport.candidates
 		report.restored += legReport.restored
 		report.quarantined += legReport.quarantined
 		report.legReads += legReport.legReads
+		report.offPlaneRouted += legReport.offPlaneRouted
 		report.flapping = append(report.flapping, legReport.flapping...)
 		return legReport.err
 	})
@@ -666,8 +692,9 @@ func (l *routeRecoveryLane) backstopPassOnPlane(plan storeref.ResolvedPlan, reas
 // The window between the re-verify and the write is narrowed, not closed. The
 // re-stamp stays monotonic (never worse than the prior blind write), so the
 // residual degrades to the pre-guard behavior rather than a new failure.
-func (l *routeRecoveryLane) backstopLeg(store beads.Store) routeRecoveryReport {
+func (l *routeRecoveryLane) backstopLeg(leg planeLeg) routeRecoveryReport {
 	report := routeRecoveryReport{lane: "backstop"}
+	store := leg.store
 	if store == nil {
 		return report
 	}
@@ -679,6 +706,12 @@ func (l *routeRecoveryLane) backstopLeg(store beads.Store) routeRecoveryReport {
 	}
 	var ids []string
 	for _, b := range items {
+		if !leg.binding && b.Status == "open" && strings.TrimSpace(b.Assignee) == "" &&
+			strings.TrimSpace(b.Metadata[beadmeta.RoutedToMetadataKey]) != "" {
+			// Already routed, on a leg the tick's demand read refuses: nothing
+			// will ever spawn a seat for it. See routeRecoveryReport.offPlaneRouted.
+			report.offPlaneRouted++
+		}
 		// Belt-and-braces with the Status:"open" query so the guarantee holds
 		// regardless of store-level filtering semantics: an assigned bead is
 		// already claimed and needs no route.
@@ -821,6 +854,43 @@ func (l *routeRecoveryLane) restoreRoute(store beads.Store, live beads.Bead, bac
 			out.writes = 1
 		}
 		return out
+	}
+
+	// The write is a key-level compare-and-set against the empty route the live
+	// read saw, so a route another writer stamped after that read — a graph
+	// activation's qualified route, a router, another pass — is never replaced
+	// with this one. A blind metadata write cannot see that it changed.
+	if writer, ok := beads.MetadataCASWriterFor(store); ok {
+		swapped, err := writer.CompareAndSetMetadataKey(live.ID, beadmeta.RoutedToMetadataKey, "", route)
+		switch {
+		case errors.Is(err, beads.ErrConditionalWriteUnsupported):
+			// The store cannot compare-and-set after all (conditional writes
+			// off at the instance): fall back to the legacy write below.
+		case err != nil:
+			return routeRestoreOutcome{writes: 1, err: fmt.Errorf("bead %s: restoring gc.routed_to=%q: %w", live.ID, route, err)}
+		case !swapped:
+			// Another writer set gc.routed_to after the live read. Its route
+			// stands: a lost race is a no-op, not an error, and not a restore
+			// the flap bound should count.
+			l.mu.Lock()
+			if l.restores[live.ID] > 0 {
+				l.restores[live.ID]--
+			}
+			l.mu.Unlock()
+			return routeRestoreOutcome{writes: 1}
+		default:
+			if !isRouteRecoveryQuarantined(live) {
+				return routeRestoreOutcome{restored: true, writes: 1}
+			}
+			// The re-check passes now, so the quarantine verdict is stale.
+			if err := store.SetMetadataBatch(live.ID, map[string]string{
+				beadmeta.RouteQuarantineMetadataKey:       "",
+				beadmeta.RouteQuarantineReasonMetadataKey: "",
+			}); err != nil {
+				return routeRestoreOutcome{restored: true, writes: 2, err: fmt.Errorf("bead %s: clearing route-recovery quarantine: %w", live.ID, err)}
+			}
+			return routeRestoreOutcome{restored: true, writes: 2}
+		}
 	}
 
 	writes := map[string]string{beadmeta.RoutedToMetadataKey: route}
