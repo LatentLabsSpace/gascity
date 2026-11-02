@@ -59,7 +59,7 @@ on:
   schedule:
     - cron: "17 3 * * *"
   pull_request:
-    branches: [main]
+    branches: [main, 'hotfix/**', 'release/**']
     types:
       - opened
       - reopened
@@ -74,8 +74,8 @@ concurrency:
   cancel-in-progress: ${{ github.event_name != 'schedule' }}
 
 env:
-  DOLT_VERSION: "2.1.7"
-  BD_VERSION: "v1.3.1"
+  DOLT_VERSION: "2.2.0"
+  BD_VERSION: "v1.3.2"
 
 # Tier routing is centralized in the `gate` job below, which always runs
 # and computes run_smoke/run_full/run_review_formulas plus a human-readable
