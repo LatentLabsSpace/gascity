@@ -100,10 +100,12 @@ func (c *CachingStore) Update(id string, opts UpdateOpts) error {
 		}
 		if current, ok := c.beads[id]; ok {
 			fresh = applyUpdateOptsToBead(current, opts)
+			eventType := updateEventType(current, true, fresh, opts)
 			c.absorbFreshLocked(id, fresh, time.Now(), absorbOpts{
-				depsMode:   depsFromFields,
-				seqMode:    seqKeep,
-				clearDirty: false,
+				depsMode:       depsFromFields,
+				seqMode:        seqKeep,
+				clearDirty:     false,
+				closeAnnounced: eventType == "bead.closed",
 			})
 			if opts.Status != nil {
 				c.clearDependentReadyProjectionsLocked(id)
@@ -112,7 +114,7 @@ func (c *CachingStore) Update(id string, opts UpdateOpts) error {
 			c.updateStatsLocked()
 			c.mu.Unlock()
 			c.recordProblem("refresh bead after update", fmt.Errorf("%s: %w", id, err))
-			c.notifyChange("bead.updated", fresh)
+			c.notifyChange(eventType, fresh)
 			return nil
 		}
 		c.markDirtyLocked(id)
@@ -124,10 +126,13 @@ func (c *CachingStore) Update(id string, opts UpdateOpts) error {
 
 	c.mu.Lock()
 	c.noteLocalMutationLocked(id)
+	previous, hadPrevious := c.beads[id]
+	eventType := updateEventType(previous, hadPrevious, fresh, opts)
 	c.absorbFreshLocked(id, fresh, time.Now(), absorbOpts{
-		depsMode:   depsFromFields,
-		seqMode:    seqKeep,
-		clearDirty: true,
+		depsMode:       depsFromFields,
+		seqMode:        seqKeep,
+		clearDirty:     true,
+		closeAnnounced: eventType == "bead.closed",
 	})
 	if opts.Status != nil {
 		c.clearDependentReadyProjectionsLocked(id)
@@ -136,8 +141,31 @@ func (c *CachingStore) Update(id string, opts UpdateOpts) error {
 	c.updateStatsLocked()
 	c.mu.Unlock()
 
-	c.notifyChange("bead.updated", fresh)
+	c.notifyChange(eventType, fresh)
 	return nil
+}
+
+// updateEventType names the event an Update announces for the row it installs.
+// An update that leaves the bead closed when it was not closed before is a
+// close, whatever spelling asked for it, so it is announced as bead.closed just
+// as Close announces it. Announcing it as bead.updated hid it from every
+// bead.closed consumer, and the reconcile pass later evicted the closed row
+// without an event (gastownhall/gascity#6860). With no cached row to compare,
+// the update's own status=closed is the evidence.
+func updateEventType(previous Bead, hadPrevious bool, installed Bead, opts UpdateOpts) string {
+	if installed.Status != "closed" {
+		return "bead.updated"
+	}
+	if hadPrevious {
+		if previous.Status != "closed" {
+			return "bead.closed"
+		}
+		return "bead.updated"
+	}
+	if opts.Status != nil && *opts.Status == "closed" {
+		return "bead.closed"
+	}
+	return "bead.updated"
 }
 
 // ReleaseIfCurrent clears an in-progress assignment through the backing store
@@ -225,18 +253,21 @@ func (c *CachingStore) Close(id string) error {
 
 	c.mu.Lock()
 	c.noteLocalMutationLocked(id)
+	announce := false
 	if refreshed {
-		c.absorbFreshLocked(id, closed, time.Now(), absorbOpts{
-			depsMode:   depsKeepCached,
-			seqMode:    seqKeep,
-			clearDirty: true,
+		announce = c.absorbFreshLocked(id, closed, time.Now(), absorbOpts{
+			depsMode:       depsKeepCached,
+			seqMode:        seqKeep,
+			clearDirty:     true,
+			closeAnnounced: true,
 		})
 	} else if b, ok := c.beads[id]; ok {
 		setBeadStatus(&b, "closed")
-		c.absorbFreshLocked(id, b, time.Now(), absorbOpts{
-			depsMode:   depsKeepCached,
-			seqMode:    seqKeep,
-			clearDirty: true,
+		announce = c.absorbFreshLocked(id, b, time.Now(), absorbOpts{
+			depsMode:       depsKeepCached,
+			seqMode:        seqKeep,
+			clearDirty:     true,
+			closeAnnounced: true,
 		})
 		closed = cloneBead(b)
 		found = true
@@ -248,7 +279,9 @@ func (c *CachingStore) Close(id string) error {
 	}
 	c.mu.Unlock()
 
-	if found {
+	// A concurrent reader that installed and announced this close first owns
+	// the announcement; announcing again here would duplicate it.
+	if found && announce {
 		c.notifyChange("bead.closed", closed)
 	}
 	return nil
@@ -339,16 +372,23 @@ func (c *CachingStore) CloseAll(ids []string, metadata map[string]string) (int, 
 		c.markDirtyLocked(id)
 	}
 	for _, item := range refreshed {
-		previous, hadPrevious := c.beads[item.id]
+		_, hadPrevious := c.beads[item.id]
+		// A reconcile pass can evict a closed row before its trailing drain
+		// announces the row's queued close; the absorb below cancels that
+		// entry, so this CloseAll owns the announcement even with no row.
+		_, queued := c.unannouncedCloses[item.id]
 		opts := absorbOpts{depsMode: depsKeepCached, seqMode: seqKeep, clearDirty: true}
 		if item.bead.Status == "closed" {
 			opts.depsMode = depsDrop
+			// Announced below whenever this absorb owns the close.
+			opts.closeAnnounced = true
 		}
-		c.absorbFreshLocked(item.id, item.bead, time.Now(), opts)
+		announce := c.absorbFreshLocked(item.id, item.bead, time.Now(), opts)
 		if item.bead.Status == "closed" {
 			c.clearDependentReadyProjectionsLocked(item.id)
 		}
-		if hadPrevious && previous.Status != "closed" && item.bead.Status == "closed" {
+		// CloseAll announces only closes of rows it had cached or had queued.
+		if announce && (hadPrevious || queued) {
 			notifications = append(notifications, cacheNotification{
 				eventType: "bead.closed",
 				bead:      cloneBead(item.bead),
@@ -648,19 +688,22 @@ func (c *CachingStore) refreshTxTouchedBeads(ids []string, closed map[string]str
 			if hadPrevious && previous.Status != fresh.Status {
 				statusChanged = true
 			}
-			c.absorbFreshLocked(item.id, fresh, now, absorbOpts{
+			announceClose := c.absorbFreshLocked(item.id, fresh, now, absorbOpts{
 				depsMode:   depsFromFields,
 				seqMode:    seqKeep,
 				clearDirty: true,
+				// A closed row this refresh owns is announced as bead.closed
+				// below; one a concurrent reader already announced is not.
+				closeAnnounced: fresh.Status == "closed",
 			})
 			if statusChanged {
 				c.clearDependentReadyProjectionsLocked(item.id)
 			}
 			eventType := "bead.updated"
-			if fresh.Status == "closed" {
+			if announceClose {
 				eventType = "bead.closed"
 			}
-			if !hadPrevious || beadChanged(previous, fresh, false) || fresh.Status == "closed" {
+			if announceClose || !hadPrevious || beadChanged(previous, fresh, false) {
 				notifications = append(notifications, cacheNotification{
 					eventType: eventType,
 					bead:      cloneBead(fresh),
@@ -671,16 +714,19 @@ func (c *CachingStore) refreshTxTouchedBeads(ids []string, closed map[string]str
 		if item.closed {
 			if b, ok := c.beads[item.id]; ok {
 				setBeadStatus(&b, "closed")
-				c.absorbFreshLocked(item.id, b, now, absorbOpts{
-					depsMode:   depsKeepCached,
-					seqMode:    seqKeep,
-					clearDirty: true,
+				announceClose := c.absorbFreshLocked(item.id, b, now, absorbOpts{
+					depsMode:       depsKeepCached,
+					seqMode:        seqKeep,
+					clearDirty:     true,
+					closeAnnounced: true,
 				})
 				c.clearDependentReadyProjectionsLocked(item.id)
-				notifications = append(notifications, cacheNotification{
-					eventType: "bead.closed",
-					bead:      cloneBead(b),
-				})
+				if announceClose {
+					notifications = append(notifications, cacheNotification{
+						eventType: "bead.closed",
+						bead:      cloneBead(b),
+					})
+				}
 			}
 			continue
 		}
@@ -959,7 +1005,7 @@ func (c *CachingStore) DepRemove(issueID, dependsOnID string) error {
 
 // Delete passes through to the backing store and removes from cache.
 func (c *CachingStore) Delete(id string) error {
-	deleted, haveDeleted := c.snapshotBeadBeforeDelete(id)
+	deleted := c.snapshotBeadBeforeDelete(id)
 	if err := c.backing.Delete(id); err != nil {
 		return err
 	}
@@ -971,9 +1017,7 @@ func (c *CachingStore) Delete(id string) error {
 	c.markFreshLocked(time.Now())
 	c.updateStatsLocked()
 	c.mu.Unlock()
-	if haveDeleted {
-		c.notifyChange("bead.deleted", deleted)
-	}
+	c.notifyChange("bead.deleted", deleted)
 	return nil
 }
 
@@ -1010,20 +1054,18 @@ func (c *CachingStore) DeleteBatch(ids []string) error {
 	// Snapshot bead.deleted payloads from the cache only. Unlike Delete, which
 	// reads each snapshot from the backing store, forwarding N backing Get calls
 	// here would reintroduce the per-bead subprocess storm this batch path exists
-	// to remove; a bead absent from the cache is still evicted but emits no
-	// event. In practice the wisp GC lists the closure just before deleting it,
-	// so members are warm in the cache.
+	// to remove. A bead the cache does not hold (a closed row, a restarted
+	// process, an evicted entry) still gets its event, as an id-only tombstone
+	// (deleteSnapshotLocked), and an id listed twice gets one event.
 	deleted := make(map[string]struct{}, len(ids))
 	c.mu.RLock()
 	events := make([]Bead, 0, len(ids))
 	for _, id := range ids {
-		if id == "" {
+		if _, seen := deleted[id]; seen || id == "" {
 			continue
 		}
 		deleted[id] = struct{}{}
-		if b, ok := c.beads[id]; ok {
-			events = append(events, cloneBead(b))
-		}
+		events = append(events, c.deleteSnapshotLocked(id))
 	}
 	c.mu.RUnlock()
 
@@ -1060,11 +1102,13 @@ func (c *CachingStore) evictBatchDeletedLocked(deleted map[string]struct{}) {
 // reconcilePartialBatchDelete handles a backing DeleteBatch error. A
 // chunk-committing backend (BdStore) can durably remove earlier chunks before a
 // later chunk fails, reporting the removed ids via *BatchDeleteError. This
-// evicts exactly those committed ids and fires their bead.deleted events so a
-// mid-batch failure never leaves a deleted bead present-but-stale in the cache,
-// while the uncommitted ids stay resident because the backing did not remove
-// them. The original error is always returned so the caller still sees the
-// failure; a backing that reports no committed ids leaves the cache untouched.
+// evicts exactly those committed ids and fires their bead.deleted events (from
+// events, which holds one per requested id, cached or not) so a mid-batch
+// failure never leaves a deleted bead present-but-stale in the cache or
+// unannounced, while the uncommitted ids stay resident because the backing did
+// not remove them. The original error is always returned so the caller still
+// sees the failure; a backing that reports no committed ids leaves the cache
+// untouched.
 func (c *CachingStore) reconcilePartialBatchDelete(err error, events []Bead) error {
 	var batchErr *BatchDeleteError
 	if !errors.As(err, &batchErr) || len(batchErr.Committed) == 0 {
@@ -1157,16 +1201,34 @@ func (c *CachingStore) dropIncomingEdgesToDeletedLocked(deleted map[string]struc
 	}
 }
 
-func (c *CachingStore) snapshotBeadBeforeDelete(id string) (Bead, bool) {
+// snapshotBeadBeforeDelete returns the bead.deleted payload for id, read while
+// the row still exists: the backing row, else what the cache holds
+// (deleteSnapshotLocked). A failed or missed read must not cost the event: the
+// caller announces every delete the backing commits.
+func (c *CachingStore) snapshotBeadBeforeDelete(id string) Bead {
 	deleted, err := c.backing.Get(id)
-	if err != nil {
-		if errors.Is(err, ErrNotFound) {
-			return Bead{}, false
-		}
-		c.recordProblem("snapshot bead before delete", fmt.Errorf("%s: %w", id, err))
-		return Bead{}, false
+	if err == nil {
+		return deleted
 	}
-	return deleted, true
+	if !errors.Is(err, ErrNotFound) {
+		c.recordProblem("snapshot bead before delete", fmt.Errorf("%s: %w", id, err))
+	}
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.deleteSnapshotLocked(id)
+}
+
+// deleteSnapshotLocked returns the bead.deleted payload the cache can give for
+// id without a backing read: its cached row, else an id-only tombstone. The id
+// is what a delete needs — the run projection and the caches drop the row by
+// it — and a delete announced by nothing is never repaired: the projection
+// replays the retained event log on every restart and keeps a row no
+// bead.deleted named (gastownhall/gascity#5934). Caller must hold c.mu.
+func (c *CachingStore) deleteSnapshotLocked(id string) Bead {
+	if b, ok := c.beads[id]; ok {
+		return cloneBead(b)
+	}
+	return Bead{ID: id}
 }
 
 func applyUpdateOptsToBead(bead Bead, opts UpdateOpts) Bead {

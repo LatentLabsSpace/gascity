@@ -1402,13 +1402,11 @@ func openCityRecorder(stderr io.Writer) events.Recorder {
 	return openCityRecorderAt(cityPath, stderr)
 }
 
+// openCityRecorderAt is openCityRecorder for an already-resolved city. The
+// recorder is a secondary writer that never rotates: the city's controller
+// owns rotation (see newSecondaryFileEventsRecorder).
 func openCityRecorderAt(cityPath string, stderr io.Writer) events.Recorder {
-	eventsCfg := config.EventsConfig{}
-	if cfg, err := loadCityConfig(cityPath, io.Discard); err == nil {
-		eventsCfg = cfg.Events
-	}
-	rec, err := newFileEventsRecorder(
-		filepath.Join(cityPath, ".gc", "events.jsonl"), eventsCfg, stderr)
+	rec, err := openCityEventsLog(cityPath, stderr)
 	if err != nil {
 		return events.Discard
 	}
@@ -1474,6 +1472,18 @@ func openCityStoreAt(cityPath string) (beads.Store, error) {
 		return nil, err
 	}
 	return result.Store, nil
+}
+
+// openCityStoreAtWithConfig is openCityStoreAt for a one-shot caller that has
+// already loaded this city's config in the same invocation: the open reuses cfg
+// instead of reloading city.toml and every pack include. A nil cfg loads, like
+// openCityStoreAt. Long-lived callers must keep openCityStoreAt.
+//
+// On this branch it is a thin wrapper over openStoreAtForCityWithConfig: the
+// bd provider's city-scope open still re-reads the config for its issue prefix
+// and store options (main avoids that reload with #6536's one-shot bd open).
+func openCityStoreAtWithConfig(cityPath string, cfg *config.City) (beads.Store, error) {
+	return openStoreAtForCityWithConfig(cityPath, cityPath, cfg)
 }
 
 func openCityStoreResultAt(cityPath string) (beads.StoreOpenResult, error) {

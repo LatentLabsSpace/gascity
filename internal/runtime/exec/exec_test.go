@@ -1461,22 +1461,72 @@ func TestUnknownOperation_exit2(t *testing.T) {
 	}
 }
 
-func TestProvider_StartCancellationInterruptsCooperativeScript(t *testing.T) {
-	for _, interruptExitCode := range []int{0, 2} {
-		t.Run(fmt.Sprintf("interrupt_exit_%d", interruptExitCode), func(t *testing.T) {
+// start cannot be an unknown operation, so its exit 2 (e.g. a `set -e` wrapper
+// whose grep or jq exits 2) is a failed start: Start reports it and runs `stop`
+// to tear down whatever box the adapter already created.
+func TestStart_exit2IsFailureAndCleansUp(t *testing.T) {
+	dir := t.TempDir()
+	logf := filepath.Join(dir, "ops.log")
+	script := writeScript(t, dir, `
+op="$1"; name="$2"
+case "$op" in
+  start)      cat >/dev/null; echo "start $name" >> "`+logf+`"; exit 2 ;;
+  stop)       echo "stop $name" >> "`+logf+`" ;;
+  is-running) echo false ;;
+  *) exit 2 ;;
+esac
+`)
+	p := NewProvider(script)
+
+	err := p.Start(context.Background(), "worker", runtime.Config{Command: "agent"})
+	if err == nil {
+		t.Fatal("Start with a start op exiting 2 = nil, want an error")
+	}
+	if !strings.Contains(err.Error(), "start worker") {
+		t.Errorf("Start error = %v, want the adapter's start failure", err)
+	}
+	if log := readLog(t, logf); !strings.Contains(log, "start worker\nstop worker\n") {
+		t.Errorf("failed start must run stop for the same name; ops log:\n%s", log)
+	}
+}
+
+// provision runs only for a pack that declared proc.provision, so a declared op
+// cannot be unknown: its exit 2 is a failed provision, not a silent success.
+func TestProvision_exit2IsFailure(t *testing.T) {
+	dir := t.TempDir()
+	script := writeScript(t, dir, `
+case "$1" in
+  protocol)  echo '{"version":0,"capabilities":["proc.exec","proc.provision"]}' ;;
+  provision) cat >/dev/null; exit 2 ;;
+  *) exit 2 ;;
+esac
+`)
+	p := NewProvider(script)
+	if !p.supportsSeparableLaunch() {
+		t.Fatal("supportsSeparableLaunch = false; want true for a proc.provision pack")
+	}
+
+	if err := p.provisionBox(context.Background(), "worker", runtime.Config{Command: "agent"}); err == nil {
+		t.Fatal("provisionBox with a provision op exiting 2 = nil, want an error")
+	}
+}
+
+func TestProvider_StartCancellationTerminatesCooperativeScript(t *testing.T) {
+	for _, termExitCode := range []int{0, 2} {
+		t.Run(fmt.Sprintf("term_exit_%d", termExitCode), func(t *testing.T) {
 			dir := t.TempDir()
 			readyFile := filepath.Join(dir, "ready")
-			interruptFile := filepath.Join(dir, "interrupted")
+			terminateFile := filepath.Join(dir, "terminated")
 			script := writeScript(t, dir, fmt.Sprintf(`
 case "$1" in
   start)
-    trap 'printf "%%s\n" interrupted > "%s"; exit %d' INT
+    trap 'printf "%%s\n" terminated > "%s"; exit %d' TERM
     : > "%s"
     while :; do :; done
     ;;
   *) exit 2 ;;
 esac
-	`, interruptFile, interruptExitCode, readyFile))
+	`, terminateFile, termExitCode, readyFile))
 			p := NewProvider(script)
 
 			ctx, cancel := context.WithCancel(context.Background())
@@ -1515,39 +1565,46 @@ esac
 				t.Fatal("Start did not return after cancellation")
 			}
 
-			data, err := os.ReadFile(interruptFile)
+			data, err := os.ReadFile(terminateFile)
 			if err != nil {
-				t.Fatalf("read interrupt marker: %v", err)
+				t.Fatalf("read termination marker: %v", err)
 			}
-			if got := strings.TrimSpace(string(data)); got != "interrupted" {
-				t.Fatalf("interrupt marker = %q, want %q", got, "interrupted")
+			if got := strings.TrimSpace(string(data)); got != "terminated" {
+				t.Fatalf("termination marker = %q, want %q", got, "terminated")
 			}
 		})
 	}
 }
 
-// TestProvider_StartCancellationInterruptsForegroundChild proves cooperative
+// TestProvider_StartCancellationTerminatesForegroundChild proves cooperative
 // cancellation reaches a foreground child of the adapter, not just the shell
 // leader. The adapter shell blocks in a foreground `sleep` far longer than the
 // provider's WaitDelay (mimicking a `ready_delay_ms` readiness delay). A
-// process-only interrupt would be deferred by the shell until the child
+// process-only SIGTERM would be deferred by the shell until the child
 // returned, so WaitDelay would force-kill the shell before its rollback trap
 // ran and the resource the adapter created would leak. Signaling the process
 // group unblocks the child so the trap runs inside the grace window.
-func TestProvider_StartCancellationInterruptsForegroundChild(t *testing.T) {
+func TestProvider_StartCancellationTerminatesForegroundChild(t *testing.T) {
 	dir := t.TempDir()
 	readyFile := filepath.Join(dir, "ready")
-	interruptFile := filepath.Join(dir, "interrupted")
+	terminateFile := filepath.Join(dir, "terminated")
+	// The foreground child writes the readiness marker itself, then execs
+	// sleep. A marker written by the adapter shell before forking sleep
+	// leaves a window where the forked child still runs the shell's TERM
+	// handler: a SIGTERM landing there is swallowed by the child, which then
+	// execs a 30s sleep, and the shell defers its trap until that foreground
+	// command completes, so WaitDelay kills it first. The exec'd child starts
+	// with default TERM disposition, so once the marker exists the SIGTERM
+	// always ends the child and runs the trap.
 	script := writeScript(t, dir, fmt.Sprintf(`
 case "$1" in
   start)
-    trap 'printf "%%s\n" interrupted > "%s"; exit 0' INT
-    : > "%s"
-    sleep 30
+    trap 'printf "%%s\n" terminated > "%s"; exit 0' TERM
+    sh -c ': > "$1"; exec sleep 30' sh "%s"
     ;;
   *) exit 2 ;;
 esac
-	`, interruptFile, readyFile))
+	`, terminateFile, readyFile))
 	p := NewProvider(script)
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -1587,12 +1644,12 @@ esac
 		t.Fatal("Start did not return after cancellation; foreground child blocked the rollback trap")
 	}
 
-	data, err := os.ReadFile(interruptFile)
+	data, err := os.ReadFile(terminateFile)
 	if err != nil {
-		t.Fatalf("read interrupt marker (rollback trap never ran): %v", err)
+		t.Fatalf("read termination marker (rollback trap never ran): %v", err)
 	}
-	if got := strings.TrimSpace(string(data)); got != "interrupted" {
-		t.Fatalf("interrupt marker = %q, want %q", got, "interrupted")
+	if got := strings.TrimSpace(string(data)); got != "terminated" {
+		t.Fatalf("termination marker = %q, want %q", got, "terminated")
 	}
 }
 

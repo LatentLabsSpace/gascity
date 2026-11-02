@@ -4670,21 +4670,37 @@ func TestReconcileSessionBeads_DrainAckedOrphanCloseIgnoresUnreachableRigAssigne
 	}
 }
 
-func TestReconcileSessionBeads_SuspendedCloseIgnoresUnreachableRigAssignedWork(t *testing.T) {
+// SESS-081, split by mc-3ixn3.16: a rig store city.toml does not declare is no
+// leg, so work there neither holds the suspended close nor is released by it;
+// a DECLARED rig is a leg of every seat (one leg set for gate and cascade), so
+// its claim holds the seat open.
+func TestReconcileSessionBeads_SuspendedCloseIgnoresUndeclaredRigAssignedWork(t *testing.T) {
+	suspendedCloseOverRigWork(t, false)
+}
+
+func TestReconcileSessionBeads_SuspendedCloseHeldByDeclaredRigAssignedWork(t *testing.T) {
+	suspendedCloseOverRigWork(t, true)
+}
+
+func suspendedCloseOverRigWork(t *testing.T, declared bool) {
 	env := newReconcilerTestEnv()
 	env.cfg = &config.City{
 		Agents: []config.Agent{{Name: "worker"}},
+	}
+	if declared {
+		env.cfg.Rigs = []config.Rig{{Name: "some-rig", Path: filepath.Join(t.TempDir(), "some-rig")}}
 	}
 	session := env.createSessionBead("worker", "worker")
 	env.markSessionActive(&session)
 
 	rigStore := beads.NewMemStore()
-	if _, err := rigStore.Create(beads.Bead{
+	rigWork, err := rigStore.Create(beads.Bead{
 		Title:    "unreachable rig work",
 		Type:     "task",
 		Status:   "open",
 		Assignee: session.ID,
-	}); err != nil {
+	})
+	if err != nil {
 		t.Fatalf("Create rig work bead: %v", err)
 	}
 
@@ -4719,8 +4735,13 @@ func TestReconcileSessionBeads_SuspendedCloseIgnoresUnreachableRigAssignedWork(t
 	if err != nil {
 		t.Fatalf("Get(%s): %v", session.ID, err)
 	}
-	if got.Status != "closed" {
-		t.Fatalf("status = %q, want closed — suspended close must ignore work in stores the session cannot reach", got.Status)
+	if want := map[bool]string{false: "closed", true: "open"}[declared]; got.Status != want {
+		t.Fatalf("declared=%v: status = %q, want %s", declared, got.Status, want)
+	}
+	// Either way the claim is left as it was: undeclared, no leg releases it;
+	// declared, it holds the seat.
+	if got, err := rigStore.Get(rigWork.ID); err != nil || got.Assignee != session.ID || got.Status != "open" {
+		t.Fatalf("rig work = %+v, %v; want it untouched (no leg reads an undeclared rig)", got, err)
 	}
 }
 
@@ -9087,6 +9108,12 @@ func TestReconcileSessionBeads_RollsBackPendingCreateWhenConflictingRuntimeAlrea
 	if got.Metadata["state"] != "failed-create" {
 		t.Fatalf("state = %q, want %q", got.Metadata["state"], "failed-create")
 	}
+	if !sp.IsRunning("sky") {
+		t.Fatal("rollback stopped the foreign runtime")
+	}
+	if id, err := sp.GetMeta("sky", "GC_SESSION_ID"); err != nil || id != "different-bead" {
+		t.Fatalf("foreign runtime ownership changed: id=%q err=%v", id, err)
+	}
 }
 
 func TestReconcileSessionBeads_RollsBackAllMismatchesInOneTickAndStillStarts(t *testing.T) {
@@ -10134,6 +10161,10 @@ func TestReconcileSessionBeads_ConfigDriftAttachmentErrorDefersLiveDrift(t *test
 	session := env.createSessionBead("worker", "worker")
 	env.setSessionMetadata(&session, map[string]string{
 		"started_config_hash": runtime.CoreFingerprint(runtime.Config{Command: "test-cmd"}),
+		// Converged with the live runtime, so no status heal (which re-reads
+		// the row before writing) consumes the one injected Get failure
+		// ahead of the attachment observation under test.
+		"state": "awake",
 	})
 	backing := env.store
 	env.store = &sessionObservationGetErrorStore{
