@@ -139,6 +139,15 @@ func (c *CachingStore) probeConditionalWriteCapability() (bool, string) {
 	return false, "backing store does not implement conditional writes"
 }
 
+// conditionalWritesStoreOpen reports whether the backing store is still open:
+// cache and backing are one store instance for liveness, as for capability.
+func (c *CachingStore) conditionalWritesStoreOpen() error {
+	if liveness, ok := c.conditionalBacking().(conditionalWritesLiveness); ok {
+		return liveness.conditionalWritesStoreOpen()
+	}
+	return nil
+}
+
 // UpdateIfMatch forwards the fenced update to the backing store's conditional
 // writer and maintains the cache: refresh on success, evict when the refresh
 // fails or the precondition does. A backing without the capability yields
@@ -209,7 +218,7 @@ func (c *CachingStore) DeleteIfMatch(id string, expectedRevision int64) error {
 	if !ok {
 		return ErrConditionalWriteUnsupported
 	}
-	deleted, haveDeleted := c.snapshotBeadBeforeDelete(id)
+	deleted := c.snapshotBeadBeforeDelete(id)
 	if err := writer.DeleteIfMatch(id, expectedRevision); err != nil {
 		c.applyConditionalWriteFailure(id, err)
 		return err
@@ -222,9 +231,7 @@ func (c *CachingStore) DeleteIfMatch(id string, expectedRevision int64) error {
 	c.markFreshLocked(time.Now())
 	c.updateStatsLocked()
 	c.mu.Unlock()
-	if haveDeleted {
-		c.notifyChange("bead.deleted", deleted)
-	}
+	c.notifyChange("bead.deleted", deleted)
 	return nil
 }
 

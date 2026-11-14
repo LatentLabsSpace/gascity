@@ -293,7 +293,7 @@ func poolSlotRetireBlocker(info sessionpkg.Info, now time.Time) string {
 // form <template>-<n> as a legitimate claim by that pool's own session. A pool
 // slot's alias diverges from its session_name exactly when the runtime name
 // steps aside to "<identity>-pool" — the ga-rxhu2 specimen's own shape. Probing
-// the narrower {ID, session_name, configured_named_identity} set would be blind
+// the narrower config-aware set, which drops a rebinding slot alias, would be blind
 // to the agent's own claims on precisely the configuration this bound targets,
 // and unlike every other consumer of that narrow set, this path uses the answer
 // to authorize a Kill, not just a close of an already-dead runtime.
@@ -315,10 +315,7 @@ func poolSlotRetireHasAssignedWork(
 	rigStores map[string]beads.Store,
 	info sessionpkg.Info,
 ) (bool, error) {
-	identifiers := poolSlotRetireAssigneeIdentities(info, cfg)
-	return assignedWorkExistsForSession(cityPath, cfg, store, rigStores, info, func(s beads.Store) (bool, error) {
-		return sessionHasOpenAssignedWorkInStoreByIdentifiersForCloseGate(s, identifiers)
-	})
+	return seatHasWorkForCloseGate(cityPath, cfg, store, rigStores, info, poolSlotRetireAssigneeIdentities(info, cfg))
 }
 
 // retirePoolSlotAtDrainDeadline force-retires a pool-managed seat whose drain
@@ -456,7 +453,7 @@ func retirePoolSlotAtDrainDeadline(
 		fmt.Fprintf(stderr, "session reconciler: stamping drain-deadline provenance on %s: %v\n", name, err) //nolint:errcheck
 		return nil, false
 	}
-	if !closeBead(store, info.ID, "drained", now, stderr) {
+	if !closeBeadUnlessLateWork(store, workLegs{cityPath, cfg, rigStores}, info, "drained", now, stderr, notOwnDrainStep) {
 		if clearErr := sessionFrontDoor(store).ApplyPatch(info.ID, sessionpkg.MetadataPatch{drainFinalizeMetadataKey: ""}); clearErr != nil {
 			fmt.Fprintf(stderr, "session reconciler: clearing drain-deadline provenance after a refused close of %s: %v\n", name, clearErr) //nolint:errcheck
 		}

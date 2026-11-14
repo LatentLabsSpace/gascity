@@ -489,6 +489,24 @@ func (e SessionTranscriptRawResponseFormat) Valid() bool {
 	}
 }
 
+// Defines values for SlingResponseStatus.
+const (
+	Partial SlingResponseStatus = "partial"
+	Slung   SlingResponseStatus = "slung"
+)
+
+// Valid indicates whether the value is a known member of the SlingResponseStatus enum.
+func (e SlingResponseStatus) Valid() bool {
+	switch e {
+	case Partial:
+		return true
+	case Slung:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for StatusConditionalWriteStoreVerdictLatch.
 const (
 	StatusConditionalWriteStoreVerdictLatchIncapable StatusConditionalWriteStoreVerdictLatch = "incapable"
@@ -962,60 +980,60 @@ type AgentOutputResponse struct {
 
 // AgentPatch defines model for AgentPatch.
 type AgentPatch struct {
-	AppendFragments         *[]string         `json:"AppendFragments"`
-	Args                    *[]string         `json:"Args"`
-	AssignedWorkDeferLimit  *int64            `json:"AssignedWorkDeferLimit"`
-	Attach                  *bool             `json:"Attach"`
-	AutoReclaimStaleClaims  *bool             `json:"AutoReclaimStaleClaims"`
-	ContextAdvisory         ContextAdvisory   `json:"ContextAdvisory"`
-	DefaultSlingFormula     *string           `json:"DefaultSlingFormula"`
-	DependsOn               *[]string         `json:"DependsOn"`
-	Dir                     string            `json:"Dir"`
-	Env                     map[string]string `json:"Env"`
-	EnvRemove               *[]string         `json:"EnvRemove"`
-	HooksInstalled          *bool             `json:"HooksInstalled"`
-	IdleTimeout             *string           `json:"IdleTimeout"`
-	InjectAssignedSkills    *bool             `json:"InjectAssignedSkills"`
-	InjectFragments         *[]string         `json:"InjectFragments"`
-	InjectFragmentsAppend   *[]string         `json:"InjectFragmentsAppend"`
-	InstallAgentHooks       *[]string         `json:"InstallAgentHooks"`
-	InstallAgentHooksAppend *[]string         `json:"InstallAgentHooksAppend"`
-	Lifecycle               *string           `json:"Lifecycle"`
-	MCP                     *[]string         `json:"MCP"`
-	MCPAppend               *[]string         `json:"MCPAppend"`
-	MaxActiveSessions       *int64            `json:"MaxActiveSessions"`
-	MaxSessionAge           *string           `json:"MaxSessionAge"`
-	MaxSessionAgeJitter     *string           `json:"MaxSessionAgeJitter"`
-	MinActiveSessions       *int64            `json:"MinActiveSessions"`
-	MouseMode               *string           `json:"MouseMode"`
-	Name                    string            `json:"Name"`
-	Nudge                   *string           `json:"Nudge"`
-	OptionDefaults          map[string]string `json:"OptionDefaults"`
-	OverlayDir              *string           `json:"OverlayDir"`
-	Pool                    PoolOverride      `json:"Pool"`
-	PreStart                *[]string         `json:"PreStart"`
-	PreStartAppend          *[]string         `json:"PreStartAppend"`
-	PromptTemplate          *string           `json:"PromptTemplate"`
-	Provider                *string           `json:"Provider"`
-	ResumeCommand           *string           `json:"ResumeCommand"`
-	Rig                     string            `json:"Rig"`
-	ScaleCheck              *string           `json:"ScaleCheck"`
-	Scope                   *string           `json:"Scope"`
-	Session                 *string           `json:"Session"`
-	SessionLive             *[]string         `json:"SessionLive"`
-	SessionLiveAppend       *[]string         `json:"SessionLiveAppend"`
-	SessionSetup            *[]string         `json:"SessionSetup"`
-	SessionSetupAppend      *[]string         `json:"SessionSetupAppend"`
-	SessionSetupScript      *string           `json:"SessionSetupScript"`
-	Skills                  *[]string         `json:"Skills"`
-	SkillsAppend            *[]string         `json:"SkillsAppend"`
-	SleepAfterIdle          *string           `json:"SleepAfterIdle"`
-	StartCommand            *string           `json:"StartCommand"`
-	Suspended               *bool             `json:"Suspended"`
-	TmuxAlias               *string           `json:"TmuxAlias"`
-	Upstream                *string           `json:"Upstream"`
-	WakeMode                *string           `json:"WakeMode"`
-	WorkDir                 *string           `json:"WorkDir"`
+	AppendFragments         *[]string          `json:"AppendFragments"`
+	Args                    *[]string          `json:"Args"`
+	AssignedWorkDeferLimit  *int64             `json:"AssignedWorkDeferLimit"`
+	Attach                  *bool              `json:"Attach"`
+	AutoReclaimStaleClaims  *bool              `json:"AutoReclaimStaleClaims"`
+	ContextAdvisory         *ContextAdvisory   `json:"ContextAdvisory,omitempty"`
+	DefaultSlingFormula     *string            `json:"DefaultSlingFormula"`
+	DependsOn               *[]string          `json:"DependsOn"`
+	Dir                     string             `json:"Dir"`
+	Env                     *map[string]string `json:"Env,omitempty"`
+	EnvRemove               *[]string          `json:"EnvRemove"`
+	HooksInstalled          *bool              `json:"HooksInstalled"`
+	IdleTimeout             *string            `json:"IdleTimeout"`
+	InjectAssignedSkills    *bool              `json:"InjectAssignedSkills"`
+	InjectFragments         *[]string          `json:"InjectFragments"`
+	InjectFragmentsAppend   *[]string          `json:"InjectFragmentsAppend"`
+	InstallAgentHooks       *[]string          `json:"InstallAgentHooks"`
+	InstallAgentHooksAppend *[]string          `json:"InstallAgentHooksAppend"`
+	Lifecycle               *string            `json:"Lifecycle"`
+	MCP                     *[]string          `json:"MCP"`
+	MCPAppend               *[]string          `json:"MCPAppend"`
+	MaxActiveSessions       *int64             `json:"MaxActiveSessions"`
+	MaxSessionAge           *string            `json:"MaxSessionAge"`
+	MaxSessionAgeJitter     *string            `json:"MaxSessionAgeJitter"`
+	MinActiveSessions       *int64             `json:"MinActiveSessions"`
+	MouseMode               *string            `json:"MouseMode"`
+	Name                    string             `json:"Name"`
+	Nudge                   *string            `json:"Nudge"`
+	OptionDefaults          *map[string]string `json:"OptionDefaults,omitempty"`
+	OverlayDir              *string            `json:"OverlayDir"`
+	Pool                    *PoolOverride      `json:"Pool,omitempty"`
+	PreStart                *[]string          `json:"PreStart"`
+	PreStartAppend          *[]string          `json:"PreStartAppend"`
+	PromptTemplate          *string            `json:"PromptTemplate"`
+	Provider                *string            `json:"Provider"`
+	ResumeCommand           *string            `json:"ResumeCommand"`
+	Rig                     string             `json:"Rig"`
+	ScaleCheck              *string            `json:"ScaleCheck"`
+	Scope                   *string            `json:"Scope"`
+	Session                 *string            `json:"Session"`
+	SessionLive             *[]string          `json:"SessionLive"`
+	SessionLiveAppend       *[]string          `json:"SessionLiveAppend"`
+	SessionSetup            *[]string          `json:"SessionSetup"`
+	SessionSetupAppend      *[]string          `json:"SessionSetupAppend"`
+	SessionSetupScript      *string            `json:"SessionSetupScript"`
+	Skills                  *[]string          `json:"Skills"`
+	SkillsAppend            *[]string          `json:"SkillsAppend"`
+	SleepAfterIdle          *string            `json:"SleepAfterIdle"`
+	StartCommand            *string            `json:"StartCommand"`
+	Suspended               *bool              `json:"Suspended"`
+	TmuxAlias               *string            `json:"TmuxAlias"`
+	Upstream                *string            `json:"Upstream"`
+	WakeMode                *string            `json:"WakeMode"`
+	WorkDir                 *string            `json:"WorkDir"`
 }
 
 // AgentPatchSetInputBody defines model for AgentPatchSetInputBody.
@@ -1329,6 +1347,13 @@ type BeadsDiagnostic struct {
 // BindingStatus Lifecycle state of a session binding.
 type BindingStatus string
 
+// BlockedRecomputedPayload defines model for BlockedRecomputedPayload.
+type BlockedRecomputedPayload struct {
+	BdVersion     string `json:"bd_version"`
+	RowsCorrected int64  `json:"rows_corrected"`
+	Scope         string `json:"scope"`
+}
+
 // BoundEventPayload defines model for BoundEventPayload.
 type BoundEventPayload struct {
 	AgentName      *string `json:"agent_name,omitempty"`
@@ -1592,7 +1617,7 @@ type ConversationTranscriptRecord struct {
 
 	// Kind Direction of a transcript entry.
 	Kind     TranscriptMessageKind `json:"Kind"`
-	Metadata map[string]string     `json:"Metadata"`
+	Metadata *map[string]string    `json:"Metadata,omitempty"`
 
 	// Provenance Provenance of a transcript entry (freshly observed vs. replayed from persisted history).
 	Provenance        TranscriptProvenance `json:"Provenance"`
@@ -1662,15 +1687,15 @@ type ConvoyRemoveInputBody struct {
 
 // DeliveryContextRecord defines model for DeliveryContextRecord.
 type DeliveryContextRecord struct {
-	BindingGeneration int64             `json:"BindingGeneration"`
-	Conversation      ConversationRef   `json:"Conversation"`
-	ID                string            `json:"ID"`
-	LastMessageID     string            `json:"LastMessageID"`
-	LastPublishedAt   time.Time         `json:"LastPublishedAt"`
-	Metadata          map[string]string `json:"Metadata"`
-	SchemaVersion     int64             `json:"SchemaVersion"`
-	SessionID         string            `json:"SessionID"`
-	SourceSessionID   string            `json:"SourceSessionID"`
+	BindingGeneration int64              `json:"BindingGeneration"`
+	Conversation      ConversationRef    `json:"Conversation"`
+	ID                string             `json:"ID"`
+	LastMessageID     string             `json:"LastMessageID"`
+	LastPublishedAt   time.Time          `json:"LastPublishedAt"`
+	Metadata          *map[string]string `json:"Metadata,omitempty"`
+	SchemaVersion     int64              `json:"SchemaVersion"`
+	SessionID         string             `json:"SessionID"`
+	SourceSessionID   string             `json:"SourceSessionID"`
 }
 
 // Dep defines model for Dep.
@@ -2209,12 +2234,12 @@ type InboundEventPayload struct {
 
 // InboundResult defines model for InboundResult.
 type InboundResult struct {
-	Binding         SessionBindingRecord         `json:"Binding"`
-	GroupRoute      GroupRouteDecision           `json:"GroupRoute"`
-	Message         ExternalInboundMessage       `json:"Message"`
-	TargetAgentName string                       `json:"TargetAgentName"`
-	TargetSessionID string                       `json:"TargetSessionID"`
-	TranscriptEntry ConversationTranscriptRecord `json:"TranscriptEntry"`
+	Binding         *SessionBindingRecord         `json:"Binding,omitempty"`
+	GroupRoute      *GroupRouteDecision           `json:"GroupRoute,omitempty"`
+	Message         ExternalInboundMessage        `json:"Message"`
+	TargetAgentName string                        `json:"TargetAgentName"`
+	TargetSessionID string                        `json:"TargetSessionID"`
+	TranscriptEntry *ConversationTranscriptRecord `json:"TranscriptEntry,omitempty"`
 }
 
 // ListBodyAgentPatch defines model for ListBodyAgentPatch.
@@ -2839,9 +2864,9 @@ type OutboundEventPayload struct {
 
 // OutboundResult defines model for OutboundResult.
 type OutboundResult struct {
-	DeliveryContext DeliveryContextRecord        `json:"DeliveryContext"`
-	Receipt         PublishReceipt               `json:"Receipt"`
-	TranscriptEntry ConversationTranscriptRecord `json:"TranscriptEntry"`
+	DeliveryContext *DeliveryContextRecord        `json:"DeliveryContext,omitempty"`
+	Receipt         PublishReceipt                `json:"Receipt"`
+	TranscriptEntry *ConversationTranscriptRecord `json:"TranscriptEntry,omitempty"`
 }
 
 // OutputTurn defines model for OutputTurn.
@@ -3030,21 +3055,21 @@ type ProviderOptionDTO struct {
 
 // ProviderPatch defines model for ProviderPatch.
 type ProviderPatch struct {
-	ACPArgs              *[]string         `json:"ACPArgs"`
-	ACPCommand           *string           `json:"ACPCommand"`
-	AcceptStartupDialogs *bool             `json:"AcceptStartupDialogs"`
-	Args                 *[]string         `json:"Args"`
-	ArgsAppend           *[]string         `json:"ArgsAppend"`
-	Base                 *string           `json:"Base"`
-	Command              *string           `json:"Command"`
-	Env                  map[string]string `json:"Env"`
-	EnvRemove            *[]string         `json:"EnvRemove"`
-	Name                 string            `json:"Name"`
-	OptionsSchemaMerge   *string           `json:"OptionsSchemaMerge"`
-	PromptFlag           *string           `json:"PromptFlag"`
-	PromptMode           *string           `json:"PromptMode"`
-	ReadyDelayMs         *int64            `json:"ReadyDelayMs"`
-	Replace              bool              `json:"Replace"`
+	ACPArgs              *[]string          `json:"ACPArgs"`
+	ACPCommand           *string            `json:"ACPCommand"`
+	AcceptStartupDialogs *bool              `json:"AcceptStartupDialogs"`
+	Args                 *[]string          `json:"Args"`
+	ArgsAppend           *[]string          `json:"ArgsAppend"`
+	Base                 *string            `json:"Base"`
+	Command              *string            `json:"Command"`
+	Env                  *map[string]string `json:"Env,omitempty"`
+	EnvRemove            *[]string          `json:"EnvRemove"`
+	Name                 string             `json:"Name"`
+	OptionsSchemaMerge   *string            `json:"OptionsSchemaMerge"`
+	PromptFlag           *string            `json:"PromptFlag"`
+	PromptMode           *string            `json:"PromptMode"`
+	ReadyDelayMs         *int64             `json:"ReadyDelayMs"`
+	Replace              bool               `json:"Replace"`
 }
 
 // ProviderPatchSetInputBody defines model for ProviderPatchSetInputBody.
@@ -3187,12 +3212,12 @@ type ProviderUpdateInputBody struct {
 
 // PublishReceipt defines model for PublishReceipt.
 type PublishReceipt struct {
-	Conversation ConversationRef   `json:"Conversation"`
-	Delivered    bool              `json:"Delivered"`
-	FailureKind  string            `json:"FailureKind"`
-	MessageID    string            `json:"MessageID"`
-	Metadata     map[string]string `json:"Metadata"`
-	RetryAfter   int64             `json:"RetryAfter"`
+	Conversation ConversationRef    `json:"Conversation"`
+	Delivered    bool               `json:"Delivered"`
+	FailureKind  string             `json:"FailureKind"`
+	MessageID    string             `json:"MessageID"`
+	Metadata     *map[string]string `json:"Metadata,omitempty"`
+	RetryAfter   int64              `json:"RetryAfter"`
 }
 
 // ReadinessItem defines model for ReadinessItem.
@@ -3321,13 +3346,13 @@ type RigCreateSucceededPayload struct {
 
 // RigPatch defines model for RigPatch.
 type RigPatch struct {
-	DefaultBranch    *string           `json:"DefaultBranch"`
-	FormulaVars      map[string]string `json:"FormulaVars"`
-	Name             string            `json:"Name"`
-	Path             *string           `json:"Path"`
-	Prefix           *string           `json:"Prefix"`
-	Suspended        *bool             `json:"Suspended"`
-	SuspendedOnStart *bool             `json:"SuspendedOnStart"`
+	DefaultBranch    *string            `json:"DefaultBranch"`
+	FormulaVars      *map[string]string `json:"FormulaVars,omitempty"`
+	Name             string             `json:"Name"`
+	Path             *string            `json:"Path"`
+	Prefix           *string            `json:"Prefix"`
+	Suspended        *bool              `json:"Suspended"`
+	SuspendedOnStart *bool              `json:"SuspendedOnStart"`
 }
 
 // RigPatchSetInputBody defines model for RigPatchSetInputBody.
@@ -4804,18 +4829,51 @@ type SessionWakeRefusedPayload struct {
 	WakeRequest string `json:"wake_request"`
 }
 
+// SlingBatchSummary defines model for SlingBatchSummary.
+type SlingBatchSummary struct {
+	// ContainerType Container bead type, e.g. convoy.
+	ContainerType *string `json:"container_type,omitempty"`
+
+	// Failed Children whose routing failed.
+	Failed int64 `json:"failed"`
+
+	// Failures Children whose routing failed, with the reason. Present only when failed > 0.
+	Failures *[]SlingChildFailure `json:"failures,omitempty"`
+
+	// Idempotent Children skipped because they were already routed to the target.
+	Idempotent int64 `json:"idempotent"`
+
+	// Routed Children routed by this sling.
+	Routed int64 `json:"routed"`
+
+	// Skipped Children skipped: already routed, or not open.
+	Skipped int64 `json:"skipped"`
+
+	// Total Children tracked by the container.
+	Total int64 `json:"total"`
+}
+
+// SlingChildFailure defines model for SlingChildFailure.
+type SlingChildFailure struct {
+	// BeadId Child bead ID.
+	BeadId string `json:"bead_id"`
+
+	// Reason Why routing the child failed.
+	Reason string `json:"reason"`
+}
+
 // SlingInputBody defines model for SlingInputBody.
 type SlingInputBody struct {
-	// AttachedBeadId Bead ID to attach a formula to.
+	// AttachedBeadId Bead or convoy ID to attach formula to, in place of bead (gc sling --on).
 	AttachedBeadId *string `json:"attached_bead_id,omitempty"`
 
-	// Bead Bead ID to sling.
+	// Bead Bead or convoy ID to sling, like gc sling <target> <bead>. The target's default formula is cooked onto the bead unless no_formula is set; a convoy's open children are routed one by one.
 	Bead *string `json:"bead,omitempty"`
 
 	// Force Bypass cross-rig guards; for direct bead routes, also bypass missing-bead validation. Formula-backed graph routes may replace existing live workflow roots but still require the source bead to exist.
 	Force *bool `json:"force,omitempty"`
 
-	// Formula Formula name for workflow launch.
+	// Formula Formula name. Alone, it launches the formula standalone (gc sling --formula). With attached_bead_id, it is attached to that bead (gc sling <target> <bead> --on <formula>).
 	Formula *string `json:"formula,omitempty"`
 
 	// Merge Merge strategy: direct, mr, or local.
@@ -4824,7 +4882,7 @@ type SlingInputBody struct {
 	// NoConvoy Do not create an auto-convoy for the routed bead.
 	NoConvoy *bool `json:"no_convoy,omitempty"`
 
-	// NoFormula Suppress the target's default_sling_formula even when configured.
+	// NoFormula Suppress the target's default_sling_formula and route the raw bead (gc sling --no-formula).
 	NoFormula *bool `json:"no_formula,omitempty"`
 
 	// Owned Mark the routed bead as owned by the target.
@@ -4845,29 +4903,41 @@ type SlingInputBody struct {
 	// Target Target agent or pool.
 	Target string `json:"target"`
 
-	// Title Workflow title.
+	// Title Workflow title (gc sling --title), for an explicit or default formula.
 	Title *string `json:"title,omitempty"`
 
-	// Vars Formula variables.
+	// Vars Formula variables (gc sling --var), for an explicit or default formula.
 	Vars *map[string]string `json:"vars,omitempty"`
 }
 
 // SlingResponse defines model for SlingResponse.
 type SlingResponse struct {
-	AttachedBeadId *string `json:"attached_bead_id,omitempty"`
-	Bead           *string `json:"bead,omitempty"`
+	AttachedBeadId *string            `json:"attached_bead_id,omitempty"`
+	Batch          *SlingBatchSummary `json:"batch,omitempty"`
+	Bead           *string            `json:"bead,omitempty"`
+
+	// ConvoyId Auto-convoy tracking the routed bead, when one was created or reused. Matches gc sling --json convoy_id.
+	ConvoyId *string `json:"convoy_id,omitempty"`
 
 	// DashboardUrl Absolute dashboard deep link for the slung work: the run detail view when a graph workflow was launched, otherwise the runs list. Present only when the serving process also hosts the dashboard (the supervisor listener); the standalone controller API omits it.
-	DashboardUrl *string   `json:"dashboard_url,omitempty"`
-	Formula      *string   `json:"formula,omitempty"`
-	Mode         *string   `json:"mode,omitempty"`
-	RootBeadId   *string   `json:"root_bead_id,omitempty"`
-	Run          *RunRef   `json:"run,omitempty"`
-	Status       string    `json:"status"`
-	Target       string    `json:"target"`
-	Warnings     *[]string `json:"warnings,omitempty"`
-	WorkflowId   *string   `json:"workflow_id,omitempty"`
+	DashboardUrl *string `json:"dashboard_url,omitempty"`
+	Formula      *string `json:"formula,omitempty"`
+	Mode         *string `json:"mode,omitempty"`
+
+	// MoleculeId Root of the formula wisp attached to the bead, when a non-graph (v1) formula was attached. Matches gc sling --json molecule_id.
+	MoleculeId *string `json:"molecule_id,omitempty"`
+	RootBeadId *string `json:"root_bead_id,omitempty"`
+	Run        *RunRef `json:"run,omitempty"`
+
+	// Status slung when the sling succeeded; partial when a convoy's children were routed one by one and some failed. A partial result is not rolled back: the routed children stay routed, and batch.failures names the ones to retry.
+	Status     SlingResponseStatus `json:"status"`
+	Target     string              `json:"target"`
+	Warnings   *[]string           `json:"warnings,omitempty"`
+	WorkflowId *string             `json:"workflow_id,omitempty"`
 }
+
+// SlingResponseStatus slung when the sling succeeded; partial when a convoy's children were routed one by one and some failed. A partial result is not rolled back: the routed children stay routed, and batch.failures names the ones to retry.
+type SlingResponseStatus string
 
 // Status defines model for Status.
 type Status struct {
@@ -5162,11 +5232,12 @@ type StatusWorkCounts struct {
 
 // StorageBindingOutcomePayload defines model for StorageBindingOutcomePayload.
 type StorageBindingOutcomePayload struct {
-	Binding     string `json:"binding"`
-	Database    string `json:"database"`
-	Invariant   string `json:"invariant"`
-	Outcome     string `json:"outcome"`
-	ProvenBeads int64  `json:"proven_beads"`
+	Binding        string    `json:"binding"`
+	Database       string    `json:"database"`
+	Invariant      string    `json:"invariant"`
+	LostCrossEdges *[]string `json:"lost_cross_edges,omitempty"`
+	Outcome        string    `json:"outcome"`
+	ProvenBeads    int64     `json:"proven_beads"`
 }
 
 // StoreDiskCriticalPayload defines model for StoreDiskCriticalPayload.
@@ -5536,6 +5607,22 @@ type TypedEventStreamEnvelopeBeadWorktreeReaped struct {
 	Ts               time.Time                 `json:"ts"`
 	Type             string                    `json:"type"`
 	Workflow         *WorkflowEventProjection  `json:"workflow,omitempty"`
+}
+
+// TypedEventStreamEnvelopeBeadsBlockedRecomputed defines model for TypedEventStreamEnvelopeBeadsBlockedRecomputed.
+type TypedEventStreamEnvelopeBeadsBlockedRecomputed struct {
+	Actor            string                   `json:"actor"`
+	DependsOnStepIds *[]string                `json:"depends_on_step_ids,omitempty"`
+	Message          *string                  `json:"message,omitempty"`
+	Payload          BlockedRecomputedPayload `json:"payload"`
+	RunId            *string                  `json:"run_id,omitempty"`
+	Seq              int64                    `json:"seq"`
+	SessionId        *string                  `json:"session_id,omitempty"`
+	StepId           *string                  `json:"step_id,omitempty"`
+	Subject          *string                  `json:"subject,omitempty"`
+	Ts               time.Time                `json:"ts"`
+	Type             string                   `json:"type"`
+	Workflow         *WorkflowEventProjection `json:"workflow,omitempty"`
 }
 
 // TypedEventStreamEnvelopeBeadsConditionalWritesDegraded defines model for TypedEventStreamEnvelopeBeadsConditionalWritesDegraded.
@@ -7183,6 +7270,23 @@ type TypedTaggedEventStreamEnvelopeBeadWorktreeReaped struct {
 	Ts               time.Time                 `json:"ts"`
 	Type             string                    `json:"type"`
 	Workflow         *WorkflowEventProjection  `json:"workflow,omitempty"`
+}
+
+// TypedTaggedEventStreamEnvelopeBeadsBlockedRecomputed defines model for TypedTaggedEventStreamEnvelopeBeadsBlockedRecomputed.
+type TypedTaggedEventStreamEnvelopeBeadsBlockedRecomputed struct {
+	Actor            string                   `json:"actor"`
+	City             string                   `json:"city"`
+	DependsOnStepIds *[]string                `json:"depends_on_step_ids,omitempty"`
+	Message          *string                  `json:"message,omitempty"`
+	Payload          BlockedRecomputedPayload `json:"payload"`
+	RunId            *string                  `json:"run_id,omitempty"`
+	Seq              int64                    `json:"seq"`
+	SessionId        *string                  `json:"session_id,omitempty"`
+	StepId           *string                  `json:"step_id,omitempty"`
+	Subject          *string                  `json:"subject,omitempty"`
+	Ts               time.Time                `json:"ts"`
+	Type             string                   `json:"type"`
+	Workflow         *WorkflowEventProjection `json:"workflow,omitempty"`
 }
 
 // TypedTaggedEventStreamEnvelopeBeadsConditionalWritesDegraded defines model for TypedTaggedEventStreamEnvelopeBeadsConditionalWritesDegraded.
@@ -10538,6 +10642,32 @@ func (t *EventPayload) MergeBeadWorktreeReapedPayload(v BeadWorktreeReapedPayloa
 	return err
 }
 
+// AsBlockedRecomputedPayload returns the union data inside the EventPayload as a BlockedRecomputedPayload
+func (t EventPayload) AsBlockedRecomputedPayload() (BlockedRecomputedPayload, error) {
+	var body BlockedRecomputedPayload
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromBlockedRecomputedPayload overwrites any union data inside the EventPayload as the provided BlockedRecomputedPayload
+func (t *EventPayload) FromBlockedRecomputedPayload(v BlockedRecomputedPayload) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeBlockedRecomputedPayload performs a merge with any union data inside the EventPayload, using the provided BlockedRecomputedPayload
+func (t *EventPayload) MergeBlockedRecomputedPayload(v BlockedRecomputedPayload) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
 // AsBoundEventPayload returns the union data inside the EventPayload as a BoundEventPayload
 func (t EventPayload) AsBoundEventPayload() (BoundEventPayload, error) {
 	var body BoundEventPayload
@@ -13793,6 +13923,34 @@ func (t *TypedEventStreamEnvelope) MergeTypedEventStreamEnvelopeBeadWorktreeReap
 	return err
 }
 
+// AsTypedEventStreamEnvelopeBeadsBlockedRecomputed returns the union data inside the TypedEventStreamEnvelope as a TypedEventStreamEnvelopeBeadsBlockedRecomputed
+func (t TypedEventStreamEnvelope) AsTypedEventStreamEnvelopeBeadsBlockedRecomputed() (TypedEventStreamEnvelopeBeadsBlockedRecomputed, error) {
+	var body TypedEventStreamEnvelopeBeadsBlockedRecomputed
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromTypedEventStreamEnvelopeBeadsBlockedRecomputed overwrites any union data inside the TypedEventStreamEnvelope as the provided TypedEventStreamEnvelopeBeadsBlockedRecomputed
+func (t *TypedEventStreamEnvelope) FromTypedEventStreamEnvelopeBeadsBlockedRecomputed(v TypedEventStreamEnvelopeBeadsBlockedRecomputed) error {
+	v.Type = "beads.blocked.recomputed"
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeTypedEventStreamEnvelopeBeadsBlockedRecomputed performs a merge with any union data inside the TypedEventStreamEnvelope, using the provided TypedEventStreamEnvelopeBeadsBlockedRecomputed
+func (t *TypedEventStreamEnvelope) MergeTypedEventStreamEnvelopeBeadsBlockedRecomputed(v TypedEventStreamEnvelopeBeadsBlockedRecomputed) error {
+	v.Type = "beads.blocked.recomputed"
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
 // AsTypedEventStreamEnvelopeBeadsConditionalWritesDegraded returns the union data inside the TypedEventStreamEnvelope as a TypedEventStreamEnvelopeBeadsConditionalWritesDegraded
 func (t TypedEventStreamEnvelope) AsTypedEventStreamEnvelopeBeadsConditionalWritesDegraded() (TypedEventStreamEnvelopeBeadsConditionalWritesDegraded, error) {
 	var body TypedEventStreamEnvelopeBeadsConditionalWritesDegraded
@@ -16405,6 +16563,8 @@ func (t TypedEventStreamEnvelope) ValueByDiscriminator() (interface{}, error) {
 		return t.AsTypedEventStreamEnvelopeBeadWorktreeReapSkipped()
 	case "bead.worktree.reaped":
 		return t.AsTypedEventStreamEnvelopeBeadWorktreeReaped()
+	case "beads.blocked.recomputed":
+		return t.AsTypedEventStreamEnvelopeBeadsBlockedRecomputed()
 	case "beads.conditional_writes.degraded":
 		return t.AsTypedEventStreamEnvelopeBeadsConditionalWritesDegraded()
 	case "city.created":
@@ -16872,6 +17032,34 @@ func (t *TypedTaggedEventStreamEnvelope) FromTypedTaggedEventStreamEnvelopeBeadW
 // MergeTypedTaggedEventStreamEnvelopeBeadWorktreeReaped performs a merge with any union data inside the TypedTaggedEventStreamEnvelope, using the provided TypedTaggedEventStreamEnvelopeBeadWorktreeReaped
 func (t *TypedTaggedEventStreamEnvelope) MergeTypedTaggedEventStreamEnvelopeBeadWorktreeReaped(v TypedTaggedEventStreamEnvelopeBeadWorktreeReaped) error {
 	v.Type = "bead.worktree.reaped"
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+// AsTypedTaggedEventStreamEnvelopeBeadsBlockedRecomputed returns the union data inside the TypedTaggedEventStreamEnvelope as a TypedTaggedEventStreamEnvelopeBeadsBlockedRecomputed
+func (t TypedTaggedEventStreamEnvelope) AsTypedTaggedEventStreamEnvelopeBeadsBlockedRecomputed() (TypedTaggedEventStreamEnvelopeBeadsBlockedRecomputed, error) {
+	var body TypedTaggedEventStreamEnvelopeBeadsBlockedRecomputed
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromTypedTaggedEventStreamEnvelopeBeadsBlockedRecomputed overwrites any union data inside the TypedTaggedEventStreamEnvelope as the provided TypedTaggedEventStreamEnvelopeBeadsBlockedRecomputed
+func (t *TypedTaggedEventStreamEnvelope) FromTypedTaggedEventStreamEnvelopeBeadsBlockedRecomputed(v TypedTaggedEventStreamEnvelopeBeadsBlockedRecomputed) error {
+	v.Type = "beads.blocked.recomputed"
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeTypedTaggedEventStreamEnvelopeBeadsBlockedRecomputed performs a merge with any union data inside the TypedTaggedEventStreamEnvelope, using the provided TypedTaggedEventStreamEnvelopeBeadsBlockedRecomputed
+func (t *TypedTaggedEventStreamEnvelope) MergeTypedTaggedEventStreamEnvelopeBeadsBlockedRecomputed(v TypedTaggedEventStreamEnvelopeBeadsBlockedRecomputed) error {
+	v.Type = "beads.blocked.recomputed"
 	b, err := json.Marshal(v)
 	if err != nil {
 		return err
@@ -19494,6 +19682,8 @@ func (t TypedTaggedEventStreamEnvelope) ValueByDiscriminator() (interface{}, err
 		return t.AsTypedTaggedEventStreamEnvelopeBeadWorktreeReapSkipped()
 	case "bead.worktree.reaped":
 		return t.AsTypedTaggedEventStreamEnvelopeBeadWorktreeReaped()
+	case "beads.blocked.recomputed":
+		return t.AsTypedTaggedEventStreamEnvelopeBeadsBlockedRecomputed()
 	case "beads.conditional_writes.degraded":
 		return t.AsTypedTaggedEventStreamEnvelopeBeadsConditionalWritesDegraded()
 	case "city.created":

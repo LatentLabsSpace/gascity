@@ -88,7 +88,6 @@ type expandedAgent struct {
 	rig           string
 	pool          string
 	suspended     bool
-	provider      string
 	description   string
 }
 
@@ -104,7 +103,6 @@ func expandAgent(a config.Agent, cityName, sessTmpl string, sp sessionLister) []
 			qualifiedName: a.QualifiedName(),
 			rig:           a.Dir,
 			suspended:     a.Suspended,
-			provider:      a.Provider,
 			description:   a.Description,
 		}}
 	}
@@ -132,7 +130,6 @@ func expandAgent(a config.Agent, cityName, sessTmpl string, sp sessionLister) []
 			rig:           a.Dir,
 			pool:          poolName,
 			suspended:     a.Suspended,
-			provider:      a.Provider,
 			description:   a.Description,
 		})
 	}
@@ -171,7 +168,6 @@ func discoverUnlimitedPool(a config.Agent, poolName, cityName, sessTmpl string, 
 			rig:           a.Dir,
 			pool:          poolName,
 			suspended:     a.Suspended,
-			provider:      a.Provider,
 			description:   a.Description,
 		})
 	}
@@ -280,6 +276,29 @@ func findAgent(cfg *config.City, name string) (config.Agent, bool) {
 		return a, true
 	}
 	return config.Agent{}, false
+}
+
+// agentConfigIdentity maps an agent identity the read paths accept to the
+// identity its durable config lives under. A rig-qualified identity that only
+// resolves through a generic scope="rig" template ("myrig/rigbot" served by
+// template "rigbot", see agentutil.ResolveQualifiedRigScopedTemplate) has no
+// config of its own, so edits address the template, as the CLI does; instance
+// reports that the identity was such a per-rig instance.
+func agentConfigIdentity(cfg *config.City, name string) (identity string, instance bool) {
+	if cfg == nil {
+		return name, false
+	}
+	for i := range cfg.Agents {
+		if config.AgentMatchesIdentity(&cfg.Agents[i], name) {
+			return name, false
+		}
+	}
+	template, ok := agentutil.ResolveQualifiedRigScopedTemplate(cfg, name)
+	if !ok {
+		return name, false
+	}
+	template.Dir = ""
+	return template.QualifiedName(), true
 }
 
 // findActiveBeadForAssignees returns the ID of the first in_progress bead
@@ -434,6 +453,31 @@ func resolveProviderInfo(agentProvider string, cfg *config.City) (provider, disp
 	return provider, strings.ToUpper(provider[:1]) + provider[1:]
 }
 
+// agentProviderName is the provider an agent's sessions run under: its own,
+// else the workspace default. The SDK's control dispatcher
+// (config.IsDeterministicControlDispatcher) is providerless by design — its
+// start_command runs `gc convoy control --serve` — so it inherits none.
+func agentProviderName(a *config.Agent, cfg *config.City) string {
+	if config.IsDeterministicControlDispatcher(a) {
+		return ""
+	}
+	if a.Provider != "" {
+		return a.Provider
+	}
+	return cfg.Workspace.Provider
+}
+
+// agentProviderInfo is resolveProviderInfo for a configured agent, applying
+// agentProviderName: an agent without a provider reports none, and no
+// provider binary gates its availability.
+func agentProviderInfo(a *config.Agent, cfg *config.City) (provider, displayName string) {
+	provider = agentProviderName(a, cfg)
+	if provider == "" {
+		return "", ""
+	}
+	return resolveProviderInfo(provider, cfg)
+}
+
 // computeAgentState derives the state enum from existing agent data.
 func computeAgentState(suspended, quarantined, running bool, activeBead string, lastActivity *time.Time) string {
 	if suspended {
@@ -499,11 +543,7 @@ func canAttributeSession(agentCfg config.Agent, qualifiedName string, cfg *confi
 	}
 	count := 0
 	for _, a := range cfg.Agents {
-		provider := a.Provider
-		if provider == "" {
-			provider = cfg.Workspace.Provider
-		}
-		if provider == "claude" {
+		if agentProviderName(&a, cfg) == "claude" {
 			if isMultiSessionAgent(a) {
 				if multiSessionSharesWorkDir(cityPath, cityName, target, a, cfg.Rigs) {
 					return false

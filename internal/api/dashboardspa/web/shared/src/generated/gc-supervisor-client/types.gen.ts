@@ -63,11 +63,11 @@ export type AgentPatch = {
     AssignedWorkDeferLimit: number | null;
     Attach: boolean | null;
     AutoReclaimStaleClaims: boolean | null;
-    ContextAdvisory: ContextAdvisory;
+    ContextAdvisory?: ContextAdvisory;
     DefaultSlingFormula: string | null;
     DependsOn: Array<string> | null;
     Dir: string;
-    Env: {
+    Env?: {
         [key: string]: string;
     };
     EnvRemove: Array<string> | null;
@@ -88,11 +88,11 @@ export type AgentPatch = {
     MouseMode: string | null;
     Name: string;
     Nudge: string | null;
-    OptionDefaults: {
+    OptionDefaults?: {
         [key: string]: string;
     };
     OverlayDir: string | null;
-    Pool: PoolOverride;
+    Pool?: PoolOverride;
     PreStart: Array<string> | null;
     PreStartAppend: Array<string> | null;
     PromptTemplate: string | null;
@@ -472,6 +472,12 @@ export type BeadsDiagnostic = {
  */
 export type BindingStatus = 'active' | 'ended';
 
+export type BlockedRecomputedPayload = {
+    bd_version: string;
+    rows_corrected: number;
+    scope: string;
+};
+
 export type BoundEventPayload = {
     agent_name?: string;
     conversation_id: string;
@@ -735,7 +741,7 @@ export type ConversationTranscriptRecord = {
     ExplicitTarget: string;
     ID: string;
     Kind: TranscriptMessageKind;
-    Metadata: {
+    Metadata?: {
         [key: string]: string;
     };
     Provenance: TranscriptProvenance;
@@ -827,7 +833,7 @@ export type DeliveryContextRecord = {
     ID: string;
     LastMessageID: string;
     LastPublishedAt: string;
-    Metadata: {
+    Metadata?: {
         [key: string]: string;
     };
     SchemaVersion: number;
@@ -913,7 +919,7 @@ export type EventEmitRequest = {
     type: string;
 };
 
-export type EventPayload = AdapterEventPayload | BackendCredentialResolvedPayload | BeadClaimRejectedPayload | BeadClaimReleasedPayload | BeadDeadAssigneeReopenedPayload | BeadEventPayload | BeadWorktreeReapSkippedPayload | BeadWorktreeReapedPayload | BoundEventPayload | CityCreateSucceededPayload | CityLifecyclePayload | CityUnregisterSucceededPayload | ConditionalWritesDegradedPayload | ControlDispatcherScopeGapPayload | ControlRootSettleFailedPayload | ControlStalledPayload | ExecutionClaimWindowExpiredPayload | ExecutionStepStalledPayload | GroupCreatedEventPayload | HookClaimReclaimedStalePayload | InboundEventPayload | MailEventPayload | MoleculeResolvedPayload | NoPayload | OrderSkippedPayload | OrderSuppressedPayload | OutboundChannelMismatchPayload | OutboundEventPayload | ProjectIdentityStampedPayload | Record | RequestFailedPayload | RigCreateSucceededPayload | RigProvisionProgressPayload | RotatedPayload | SessionCreateSucceededPayload | SessionDemandClaimDivergencePayload | SessionDrainAckedWithAssignedWorkPayload | SessionLifecyclePayload | SessionMessageSucceededPayload | SessionPoolSlotRetiredAtDrainDeadlinePayload | SessionResetStalledPayload | SessionStrandedPayload | SessionSubmitSucceededPayload | SessionUnknownStatePayload | SessionWakeRefusedPayload | StorageBindingOutcomePayload | StoreDiskCriticalPayload | StoreDiskWarnPayload | StoreMaintenanceDonePayload | StoreMaintenanceFailedPayload | SupervisorFsPressureSkippedTickPayload | SupervisorRequestPayload | SupervisorShutdownPayload | SupervisorStartedPayload | UnboundEventPayload | WebhookReceivedPayload | WebhookRejectedPayload | WorkerOperationEventPayload;
+export type EventPayload = AdapterEventPayload | BackendCredentialResolvedPayload | BeadClaimRejectedPayload | BeadClaimReleasedPayload | BeadDeadAssigneeReopenedPayload | BeadEventPayload | BeadWorktreeReapSkippedPayload | BeadWorktreeReapedPayload | BlockedRecomputedPayload | BoundEventPayload | CityCreateSucceededPayload | CityLifecyclePayload | CityUnregisterSucceededPayload | ConditionalWritesDegradedPayload | ControlDispatcherScopeGapPayload | ControlRootSettleFailedPayload | ControlStalledPayload | ExecutionClaimWindowExpiredPayload | ExecutionStepStalledPayload | GroupCreatedEventPayload | HookClaimReclaimedStalePayload | InboundEventPayload | MailEventPayload | MoleculeResolvedPayload | NoPayload | OrderSkippedPayload | OrderSuppressedPayload | OutboundChannelMismatchPayload | OutboundEventPayload | ProjectIdentityStampedPayload | Record | RequestFailedPayload | RigCreateSucceededPayload | RigProvisionProgressPayload | RotatedPayload | SessionCreateSucceededPayload | SessionDemandClaimDivergencePayload | SessionDrainAckedWithAssignedWorkPayload | SessionLifecyclePayload | SessionMessageSucceededPayload | SessionPoolSlotRetiredAtDrainDeadlinePayload | SessionResetStalledPayload | SessionStrandedPayload | SessionSubmitSucceededPayload | SessionUnknownStatePayload | SessionWakeRefusedPayload | StorageBindingOutcomePayload | StoreDiskCriticalPayload | StoreDiskWarnPayload | StoreMaintenanceDonePayload | StoreMaintenanceFailedPayload | SupervisorFsPressureSkippedTickPayload | SupervisorRequestPayload | SupervisorShutdownPayload | SupervisorStartedPayload | UnboundEventPayload | WebhookReceivedPayload | WebhookRejectedPayload | WorkerOperationEventPayload;
 
 export type EventRotateAnchor = {
     /**
@@ -1454,12 +1460,12 @@ export type InboundEventPayload = {
 };
 
 export type InboundResult = {
-    Binding: SessionBindingRecord;
-    GroupRoute: GroupRouteDecision;
+    Binding?: SessionBindingRecord;
+    GroupRoute?: GroupRouteDecision;
     Message: ExternalInboundMessage;
     TargetAgentName: string;
     TargetSessionID: string;
-    TranscriptEntry: ConversationTranscriptRecord;
+    TranscriptEntry?: ConversationTranscriptRecord;
 };
 
 export type ListBodyAgentPatch = {
@@ -2205,9 +2211,9 @@ export type OutboundEventPayload = {
 };
 
 export type OutboundResult = {
-    DeliveryContext: DeliveryContextRecord;
+    DeliveryContext?: DeliveryContextRecord;
     Receipt: PublishReceipt;
-    TranscriptEntry: ConversationTranscriptRecord;
+    TranscriptEntry?: ConversationTranscriptRecord;
 };
 
 export type OutputTurn = {
@@ -2434,7 +2440,7 @@ export type ProviderPatch = {
     ArgsAppend: Array<string> | null;
     Base: string | null;
     Command: string | null;
-    Env: {
+    Env?: {
         [key: string]: string;
     };
     EnvRemove: Array<string> | null;
@@ -2624,7 +2630,7 @@ export type PublishReceipt = {
     Delivered: boolean;
     FailureKind: string;
     MessageID: string;
-    Metadata: {
+    Metadata?: {
         [key: string]: string;
     };
     RetryAfter: number;
@@ -2776,7 +2782,7 @@ export type RigCreateSucceededPayload = {
 
 export type RigPatch = {
     DefaultBranch: string | null;
-    FormulaVars: {
+    FormulaVars?: {
         [key: string]: string;
     };
     Name: string;
@@ -4586,13 +4592,55 @@ export type SessionWakeRefusedPayload = {
     wake_request: string;
 };
 
+export type SlingBatchSummary = {
+    /**
+     * Container bead type, e.g. convoy.
+     */
+    container_type?: string;
+    /**
+     * Children whose routing failed.
+     */
+    failed: number;
+    /**
+     * Children whose routing failed, with the reason. Present only when failed > 0.
+     */
+    failures?: Array<SlingChildFailure> | null;
+    /**
+     * Children skipped because they were already routed to the target.
+     */
+    idempotent: number;
+    /**
+     * Children routed by this sling.
+     */
+    routed: number;
+    /**
+     * Children skipped: already routed, or not open.
+     */
+    skipped: number;
+    /**
+     * Children tracked by the container.
+     */
+    total: number;
+};
+
+export type SlingChildFailure = {
+    /**
+     * Child bead ID.
+     */
+    bead_id: string;
+    /**
+     * Why routing the child failed.
+     */
+    reason: string;
+};
+
 export type SlingInputBody = {
     /**
-     * Bead ID to attach a formula to.
+     * Bead or convoy ID to attach formula to, in place of bead (gc sling --on).
      */
     attached_bead_id?: string;
     /**
-     * Bead ID to sling.
+     * Bead or convoy ID to sling, like gc sling <target> <bead>. The target's default formula is cooked onto the bead unless no_formula is set; a convoy's open children are routed one by one.
      */
     bead?: string;
     /**
@@ -4600,7 +4648,7 @@ export type SlingInputBody = {
      */
     force?: boolean;
     /**
-     * Formula name for workflow launch.
+     * Formula name. Alone, it launches the formula standalone (gc sling --formula). With attached_bead_id, it is attached to that bead (gc sling <target> <bead> --on <formula>).
      */
     formula?: string;
     /**
@@ -4612,7 +4660,7 @@ export type SlingInputBody = {
      */
     no_convoy?: boolean;
     /**
-     * Suppress the target's default_sling_formula even when configured.
+     * Suppress the target's default_sling_formula and route the raw bead (gc sling --no-formula).
      */
     no_formula?: boolean;
     /**
@@ -4640,11 +4688,11 @@ export type SlingInputBody = {
      */
     target: string;
     /**
-     * Workflow title.
+     * Workflow title (gc sling --title), for an explicit or default formula.
      */
     title?: string;
     /**
-     * Formula variables.
+     * Formula variables (gc sling --var), for an explicit or default formula.
      */
     vars?: {
         [key: string]: string;
@@ -4653,19 +4701,34 @@ export type SlingInputBody = {
 
 export type SlingResponse = {
     attached_bead_id?: string;
+    /**
+     * Per-child outcome counts, present only when the bead was a convoy whose open children were routed one by one (as gc sling does). Matches gc sling --json batch.
+     */
+    batch?: SlingBatchSummary;
     bead?: string;
+    /**
+     * Auto-convoy tracking the routed bead, when one was created or reused. Matches gc sling --json convoy_id.
+     */
+    convoy_id?: string;
     /**
      * Absolute dashboard deep link for the slung work: the run detail view when a graph workflow was launched, otherwise the runs list. Present only when the serving process also hosts the dashboard (the supervisor listener); the standalone controller API omits it.
      */
     dashboard_url?: string;
     formula?: string;
     mode?: string;
+    /**
+     * Root of the formula wisp attached to the bead, when a non-graph (v1) formula was attached. Matches gc sling --json molecule_id.
+     */
+    molecule_id?: string;
     root_bead_id?: string;
     /**
      * Reference to the launched run resource, present only when a graph workflow was launched (the same run the Location header addresses).
      */
     run?: RunRef;
-    status: string;
+    /**
+     * slung when the sling succeeded; partial when a convoy's children were routed one by one and some failed. A partial result is not rolled back: the routed children stay routed, and batch.failures names the ones to retry.
+     */
+    status: 'slung' | 'partial';
     target: string;
     warnings?: Array<string> | null;
     workflow_id?: string;
@@ -5044,6 +5107,7 @@ export type StorageBindingOutcomePayload = {
     binding: string;
     database: string;
     invariant: string;
+    lost_cross_edges?: Array<string> | null;
     outcome: string;
     proven_beads: number;
 };
@@ -5299,6 +5363,8 @@ export type TypedEventStreamEnvelope = ({
 } & TypedEventStreamEnvelopeBeadWorktreeReapSkipped) | ({
     type: 'bead.worktree.reaped';
 } & TypedEventStreamEnvelopeBeadWorktreeReaped) | ({
+    type: 'beads.blocked.recomputed';
+} & TypedEventStreamEnvelopeBeadsBlockedRecomputed) | ({
     type: 'beads.conditional_writes.degraded';
 } & TypedEventStreamEnvelopeBeadsConditionalWritesDegraded) | ({
     type: 'city.created';
@@ -5661,6 +5727,24 @@ export type TypedEventStreamEnvelopeBeadWorktreeReaped = {
     subject?: string;
     ts: string;
     type: 'bead.worktree.reaped';
+    workflow?: WorkflowEventProjection;
+};
+
+/**
+ * TypedEventStreamEnvelope beads.blocked.recomputed
+ */
+export type TypedEventStreamEnvelopeBeadsBlockedRecomputed = {
+    actor: string;
+    depends_on_step_ids?: Array<string>;
+    message?: string;
+    payload: BlockedRecomputedPayload;
+    run_id?: string;
+    seq: number;
+    session_id?: string;
+    step_id?: string;
+    subject?: string;
+    ts: string;
+    type: 'beads.blocked.recomputed';
     workflow?: WorkflowEventProjection;
 };
 
@@ -7346,6 +7430,8 @@ export type TypedTaggedEventStreamEnvelope = ({
 } & TypedTaggedEventStreamEnvelopeBeadWorktreeReapSkipped) | ({
     type: 'bead.worktree.reaped';
 } & TypedTaggedEventStreamEnvelopeBeadWorktreeReaped) | ({
+    type: 'beads.blocked.recomputed';
+} & TypedTaggedEventStreamEnvelopeBeadsBlockedRecomputed) | ({
     type: 'beads.conditional_writes.degraded';
 } & TypedTaggedEventStreamEnvelopeBeadsConditionalWritesDegraded) | ({
     type: 'city.created';
@@ -7718,6 +7804,25 @@ export type TypedTaggedEventStreamEnvelopeBeadWorktreeReaped = {
     subject?: string;
     ts: string;
     type: 'bead.worktree.reaped';
+    workflow?: WorkflowEventProjection;
+};
+
+/**
+ * TypedTaggedEventStreamEnvelope beads.blocked.recomputed
+ */
+export type TypedTaggedEventStreamEnvelopeBeadsBlockedRecomputed = {
+    actor: string;
+    city: string;
+    depends_on_step_ids?: Array<string>;
+    message?: string;
+    payload: BlockedRecomputedPayload;
+    run_id?: string;
+    seq: number;
+    session_id?: string;
+    step_id?: string;
+    subject?: string;
+    ts: string;
+    type: 'beads.blocked.recomputed';
     workflow?: WorkflowEventProjection;
 };
 

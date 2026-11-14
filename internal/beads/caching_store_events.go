@@ -174,6 +174,13 @@ func (c *CachingStore) applyEvent(eventType string, payload json.RawMessage, dep
 		b = verifiedClosedFresh
 		refreshedFromBacking = true
 	} else if !cached {
+		// A delete of a row this cache already tombstoned (the echo of its own
+		// delete, or a repeat) has nothing to install, so it reads nothing:
+		// on a bd backing the read is a subprocess per id, and a batch delete
+		// echoes one event per id it removed.
+		if eventType == "bead.deleted" && locallyDeleted {
+			return
+		}
 		if fresh, err := c.backing.Get(patch.ID); err == nil {
 			b = fresh
 			refreshedFromBacking = true
@@ -190,6 +197,10 @@ func (c *CachingStore) applyEvent(eventType string, payload json.RawMessage, dep
 		c.applyEventBeforeCommitForTest()
 	}
 
+	// Deferred before the unlock so it runs after it: a hook's bead.updated
+	// carrying status=closed is the first sight of that close, and nothing
+	// else would announce it.
+	defer c.announceUnannouncedCloses()
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if c.state != cacheLive && c.state != cachePartial {
@@ -271,6 +282,9 @@ func (c *CachingStore) applyEvent(eventType string, payload json.RawMessage, dep
 				depsMode:   depsKeepCached,
 				seqMode:    seqKeep,
 				clearDirty: true,
+				// A snapshot is another cache's own emission, and that cache
+				// announces the closes it observes; a hook patch is not.
+				closeAnnounced: depsAuthoritative,
 			})
 			mutated = true
 		}
@@ -294,6 +308,8 @@ func (c *CachingStore) applyEvent(eventType string, payload json.RawMessage, dep
 			depsMode:   depsKeepCached,
 			seqMode:    seqKeep,
 			clearDirty: true,
+			// The bead.closed being applied is already on the bus.
+			closeAnnounced: true,
 		})
 		c.updateEventDepsLocked(eventType, b, fields, refreshedFromBacking || depsAuthoritative)
 		mutated = true
@@ -722,7 +738,32 @@ func decodeCacheEvent(payload json.RawMessage) (Bead, map[string]json.RawMessage
 	return b, fields, nil
 }
 
+// notifyChange announces one change. Any close a read or an event patch
+// installed without announcing is drained first, so a queued close is
+// announced before this change. A drain racing on another goroutine emits
+// after unlocking, so its close can still follow this change on the stream.
 func (c *CachingStore) notifyChange(eventType string, b Bead) {
+	c.announceUnannouncedCloses()
+	c.emitChange(eventType, b)
+}
+
+// announceUnannouncedCloses emits bead.closed for every close queued by
+// trackCloseTransitionLocked. Draining under c.mu makes each queued close go
+// out exactly once however many goroutines race here. Callers must not hold
+// c.mu.
+func (c *CachingStore) announceUnannouncedCloses() {
+	if !c.hasUnannouncedCloses.Load() {
+		return
+	}
+	c.mu.Lock()
+	closed := c.takeUnannouncedClosesLocked()
+	c.mu.Unlock()
+	for _, b := range closed {
+		c.emitChange("bead.closed", b)
+	}
+}
+
+func (c *CachingStore) emitChange(eventType string, b Bead) {
 	if c.onChange == nil {
 		return
 	}

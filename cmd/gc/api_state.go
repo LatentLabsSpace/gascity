@@ -99,8 +99,14 @@ type controllerState struct {
 	adapterReg             *extmsg.AdapterRegistry
 	maintenanceLoop        *supervisor.StoreMaintenanceLoop // nil when [maintenance.dolt] enabled=false
 	updateMu               sync.Mutex                       // serializes rebuild+swap so stale reloads cannot overtake newer mutations
-	beadEventStartSeq      uint64
-	beadEventStartSeqOK    bool // false when LatestSeq errored at construction; 0+true = genuinely empty log
+	// publishMu makes deciding to publish a config snapshot atomic with
+	// publishing it: a runtime reload's staleness check plus swap, and an API
+	// mutation's refresh plus pending-revision mark. Without it a reload could
+	// pass its check, then swap its older config over a mutation that
+	// refreshed in between. Lock order: publishMu, then updateMu, then mu.
+	publishMu           sync.Mutex
+	beadEventStartSeq   uint64
+	beadEventStartSeqOK bool // false when LatestSeq errored at construction; 0+true = genuinely empty log
 
 	// completionsDeltaIndex is the tick delta pass's warm completion-fact
 	// idempotency record: loaded from the journal once, then kept current by the
@@ -290,21 +296,7 @@ func wrapWithCachingStore(ctx context.Context, store beads.Store, ep events.Prov
 	if ep != nil {
 		recorder = ep
 	}
-	onChange := func(eventType, beadID, runID, sessionID, stepID string, dependsOnStepIDs *[]string, payload json.RawMessage) {
-		if recorder != nil {
-			recorder.Record(events.Event{
-				Type:             eventType,
-				Actor:            cacheReconcileActor,
-				Subject:          beadID,
-				RunID:            runID,
-				SessionID:        sessionID,
-				StepID:           stepID,
-				DependsOnStepIDs: dependsOnStepIDs,
-				Payload:          payload,
-			})
-		}
-	}
-	cs := beads.NewCachingStore(baseStore, onChange)
+	cs := beads.NewCachingStore(baseStore, cacheChangeRecorder(recorder))
 	// Pre-prime active beads synchronously (~1-2s, indexed queries).
 	// Loads open + in_progress beads — enough for the startup path
 	// (adoption, session snapshot, desired state) so the city can
@@ -1069,6 +1061,8 @@ func storePointerKey(store beads.Store) (uintptr, bool) {
 }
 
 func (cs *controllerState) updateFromRuntime(cfg *config.City, sp runtime.Provider, revision string) {
+	cs.publishMu.Lock()
+	defer cs.publishMu.Unlock()
 	if cs.configMutationPending.Load() {
 		matchesPending, stale := cs.runtimeUpdateStatusForPendingMutation(revision)
 		if stale {
@@ -1203,6 +1197,11 @@ func (cs *controllerState) preflightConditionalWrites() {
 		probe("rig/"+rigName, store)
 	}
 	probe("city", cs.cityBeadStore)
+	// A split city's relocated classes share one binding engine; probe it
+	// once, not once per class it serves.
+	for _, store := range cs.storageRoutes.distinctEngines() {
+		probe("binding/"+cs.storageRoutes.binding, store)
+	}
 }
 
 // rolloutWarnf routes noteRolloutDrift's transition lines to the injected sink
@@ -2899,7 +2898,12 @@ func (cs *controllerState) mutateAndPoke(mutate func() error) error {
 	if err := mutate(); err != nil {
 		return err
 	}
+	cs.publishMu.Lock()
 	revision, err := cs.refreshConfigSnapshot()
+	if err == nil {
+		cs.markConfigMutationPending(revision)
+	}
+	cs.publishMu.Unlock()
 	if err != nil {
 		if snapshot != nil {
 			if restoreErr := snapshot.restore(); restoreErr != nil {
@@ -2909,7 +2913,6 @@ func (cs *controllerState) mutateAndPoke(mutate func() error) error {
 		}
 		return fmt.Errorf("refreshing updated city config: %w", err)
 	}
-	cs.markConfigMutationPending(revision)
 	if cs.configDirty != nil {
 		cs.configDirty.Store(true)
 	}

@@ -19,6 +19,11 @@ API projects over.
 - **<a href="https://raw.githubusercontent.com/gastownhall/gascity/main/docs/reference/schema/events.json" target="_blank" rel="noopener">events.json</a>** —
   the `gc events` JSONL line schema. It references DTO components in
   `openapi.json`, so the API remains the source of truth.
+- **The running supervisor** serves the spec for its own version at
+  `GET /openapi.json` and `GET /openapi.yaml` (OpenAPI 3.1), with OpenAPI 3.0
+  downgrades at `/openapi-3.0.json` and `/openapi-3.0.yaml`, and an interactive
+  reference page at `/docs`. The page's viewer loads from `unpkg.com`, so the
+  browser needs internet access.
 
 ## Endpoint families
 
@@ -27,31 +32,48 @@ The spec is the full reference. A brief summary of the surfaces:
 - **Cities.** `GET /v0/cities`, `POST /v0/city`,
   `GET /v0/city/{cityName}`, `GET /v0/city/{cityName}/status`,
   `GET /v0/city/{cityName}/readiness`,
-  `POST /v0/city/{cityName}/stop`.
+  `PATCH /v0/city/{cityName}` (suspend or resume).
 - **Health & readiness.** `GET /health`, `GET /v0/readiness`,
   `GET /v0/provider-readiness`.
-- **Agents.** `GET/POST/DELETE` under `/v0/city/{cityName}/agents`
-  plus SSE `/v0/city/{cityName}/agents/{agent}/output/stream`.
+- **Agents.** `GET/POST` under `/v0/city/{cityName}/agents`, plus
+  `GET/PATCH/DELETE` on `/v0/city/{cityName}/agent/{base}` and SSE
+  `/v0/city/{cityName}/agent/{base}/output/stream`.
 - **Beads (work units).** CRUD under `/v0/city/{cityName}/beads`,
   query + hook operations, dependencies, labels.
 - **Sessions.** CRUD under `/v0/city/{cityName}/sessions`, submit,
   prompt, resume, interaction response, transcript, SSE stream.
-- **Connected-client external messaging.** `POST /v0/extmsg/clients`
-  registers an external LLM client and returns a bearer token.
-  `POST /v0/extmsg/inbound` (with `provider: "llm-client"`) delivers an
-  inbound turn from the registered client to a city session.
-  `GET /v0/extmsg/{provider}/{account_id}/{conversation_id}/subscribe`
-  opens a long-lived SSE reply stream for that conversation.
-  See [Connect an external LLM client](/guides/connected-clients) for
-  the full integration guide including the SSE error catalog.
-- **Mail, convoys, orders, formulas, participants,
-  transcripts, adapters.** External messaging and orchestration
+- **External messaging.** `POST /v0/city/{cityName}/extmsg/adapters`
+  registers a client's callback URL for a provider/account,
+  `POST /v0/city/{cityName}/extmsg/inbound` delivers a turn to the
+  routed agent, and `POST /v0/city/{cityName}/extmsg/outbound`
+  publishes an agent's reply to the client's callback.
+  `POST /v0/city/{cityName}/extmsg/bind`,
+  `POST /v0/city/{cityName}/extmsg/unbind`, and
+  `GET /v0/city/{cityName}/extmsg/bindings` manage routing;
+  `/v0/city/{cityName}/extmsg/groups` and
+  `/v0/city/{cityName}/extmsg/participants` manage shared
+  conversations with several agents;
+  `GET /v0/city/{cityName}/extmsg/transcript` lists a conversation's
+  history. See [Connect an external client](/guides/connected-clients)
+  for a working end-to-end integration.
+- **Mail, convoys, orders, formulas.** Messaging and orchestration
   surfaces; see the spec for per-operation shapes.
 - **Events.** `GET /v0/events` + `GET /v0/events/stream` at
   supervisor scope, and `GET /v0/city/{cityName}/events` +
   `GET /v0/city/{cityName}/events/stream` at city scope.
 - **Config & packs.** Per-city config and pack metadata under
   `/v0/city/{cityName}/config` and `/v0/city/{cityName}/packs`.
+
+## Agent counts
+
+Several endpoints report an agent count, and each counts something different:
+
+| Endpoint | Field | What it counts |
+|----------|-------|----------------|
+| `GET /v0/city/{cityName}` | `agent_count` | Agent entries in the city's composed config: a rig-scoped agent once per rig, a pool once. |
+| `GET /v0/city/{cityName}/status` | `agents.total`, and `agent_count` (deprecated, the same number) | Agent rows after pool expansion: every slot of a bounded pool (`max_active_sessions` of them), and the running or recorded sessions of an unlimited pool. |
+| `GET /v0/city/{cityName}/agents` | `total` (no `agent_count`) | The rows returned after the `rig`, `pool` and `running` filters: every slot of a bounded pool, and the running sessions of an unlimited pool. |
+| `GET /v0/city/{cityName}/rigs`, `GET /v0/city/{cityName}/rig/{name}` | `agent_count` on each rig | That rig's agent rows: every slot of a bounded pool, and the running sessions of an unlimited pool. |
 
 ## Request and response headers
 

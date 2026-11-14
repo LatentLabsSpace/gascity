@@ -195,7 +195,7 @@ func (p *Provider) start(ctx context.Context, name string, cfg runtime.Config) e
 		p.waitPaneShellReady(ctx, paneID)
 		for attempt := 0; ; attempt++ {
 			info, adopted, err = p.startAgentAdopting(ctx, name, spec.Kind, paneID, spec.Args)
-			if err == nil || herdrErrorCode(err) != "agent_pane_busy" || attempt >= paneBusyRetries {
+			if err == nil || herdrCodeAnyShape(err) != "agent_pane_busy" || attempt >= paneBusyRetries {
 				break
 			}
 			// Back off before re-probing: herdr's own shell-prompt detection
@@ -506,7 +506,7 @@ func (p *Provider) runSetupCommand(ctx context.Context, cmd string, env map[stri
 	var out bytes.Buffer
 	w := mon.Writer(&out)
 	c.Stdout, c.Stderr = w, w
-	// Cooperative cancellation (execgrace.Apply): deadline expiry interrupts
+	// Cooperative cancellation (execgrace.Apply): deadline expiry sends SIGTERM to
 	// the command's process group first so shell rollback traps run before
 	// the forced kill; the grace doubles as the pipe-closing WaitDelay
 	// (mirrors tmux's runSetupCommand).
