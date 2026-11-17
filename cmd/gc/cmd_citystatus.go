@@ -56,6 +56,10 @@ type ControllerJSON struct {
 	PID     int    `json:"pid,omitempty"`
 	Mode    string `json:"mode,omitempty"`
 	Status  string `json:"status,omitempty"`
+	// ProcessManaged is true when an outside process manager (a container
+	// runtime or service manager) owns the controller, so gc must not
+	// suggest stopping it to hand it over.
+	ProcessManaged bool `json:"process_managed,omitempty"`
 }
 
 // StatusAgentJSON represents an agent in the JSON status output.
@@ -674,11 +678,11 @@ func controllerStatusForCity(cityPath string) ControllerJSON {
 				// to the supervisor observed immediately before the retry.
 				mode = controllerHostingSupervisor
 			}
-			return ControllerJSON{Running: true, PID: identity.PID, Mode: string(mode)}
+			return ControllerJSON{Running: true, PID: identity.PID, Mode: string(mode), ProcessManaged: identity.ProcessManaged}
 		}
 	}
 	if identity := probeControllerIdentity(cityPath); identity.PID != 0 {
-		return ControllerJSON{Running: true, PID: identity.PID, Mode: string(identity.HostingMode)}
+		return ControllerJSON{Running: true, PID: identity.PID, Mode: string(identity.HostingMode), ProcessManaged: identity.ProcessManaged}
 	}
 	if err == nil && registered {
 		return ControllerJSON{Mode: "supervisor"}
@@ -756,6 +760,16 @@ func controllerStatusGuidance(ctrl ControllerJSON, cityPath string) []string {
 		authority := "Authority: standalone controller"
 		if ctrl.PID != 0 {
 			authority = fmt.Sprintf("Authority: standalone controller PID %d", ctrl.PID)
+		}
+		if ctrl.ProcessManaged {
+			// A container runtime or service manager owns this process. The
+			// supervisor hand-off below would only stop it, ending the
+			// container or unit; agents read status output as instructions,
+			// so print no "Next:" step here at all.
+			return []string{
+				authority + ", owned by its process manager (container runtime or service manager)",
+				"Lifecycle: stop or restart this city through that process manager, not gc stop",
+			}
 		}
 		return []string{
 			authority,

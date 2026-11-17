@@ -93,6 +93,17 @@ func (m controllerHostingMode) known() bool {
 type controllerIdentityReply struct {
 	PID         int                   `json:"pid"`
 	HostingMode controllerHostingMode `json:"hosting_mode"`
+	// ProcessManaged reports that an outside process manager owns this
+	// controller's lifecycle: it is PID 1, or a direct child of PID 1 (a
+	// container runtime's init, or a service manager). Stopping it ends the
+	// managed process; nothing hands it over to the supervisor afterwards.
+	ProcessManaged bool `json:"process_managed,omitempty"`
+}
+
+// controllerProcessManagedHook reports whether this process is owned by init
+// or a service manager. Indirected for tests.
+var controllerProcessManagedHook = func() bool {
+	return os.Getpid() == 1 || os.Getppid() == 1
 }
 
 type sessionCircuitResetRequest struct {
@@ -212,7 +223,7 @@ func handleControllerConn(
 		case line == "ping":
 			fmt.Fprintf(conn, "%d\n", os.Getpid()) //nolint:errcheck // best-effort
 		case line == controllerIdentityCommand:
-			writeJSONLine(conn, controllerIdentityReply{PID: os.Getpid(), HostingMode: hostingMode})
+			writeJSONLine(conn, controllerIdentityReply{PID: os.Getpid(), HostingMode: hostingMode, ProcessManaged: controllerProcessManagedHook()})
 		case line == "poke":
 			// Non-blocking send: triggers immediate reconciler tick for
 			// event-driven wake after sling assigns work.

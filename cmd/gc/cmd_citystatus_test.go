@@ -843,6 +843,26 @@ func TestControllerStatusForCityFallsBackToStandaloneWhenRegisteredSupervisorDow
 	}
 }
 
+func TestControllerStatusForCityCarriesProcessManaged(t *testing.T) {
+	t.Setenv("GC_HOME", filepath.Join(t.TempDir(), "gc-home"))
+	cityPath := filepath.Join(shortSocketTempDir(t, "gc-status-"), "bright-lights")
+	startFakeControllerSocket(t, cityPath, `{"pid":7,"hosting_mode":"standalone","process_managed":true}`+"\n")
+
+	oldAlive := supervisorAliveHook
+	supervisorAliveHook = func() int { return 0 }
+	t.Cleanup(func() { supervisorAliveHook = oldAlive })
+
+	got := controllerStatusForCity(cityPath)
+	if got.Mode != "standalone" || !got.Running || got.PID != 7 || !got.ProcessManaged {
+		t.Fatalf("controllerStatusForCity = %+v, want running process-managed standalone PID 7", got)
+	}
+	for _, line := range controllerStatusGuidance(got, cityPath) {
+		if strings.HasPrefix(line, "Next:") {
+			t.Fatalf("process-managed standalone controller got a Next: hint %q", line)
+		}
+	}
+}
+
 func TestControllerStatusForCityLeavesLegacyHostingUnknown(t *testing.T) {
 	t.Setenv("GC_HOME", filepath.Join(t.TempDir(), "gc-home"))
 	cityPath := filepath.Join(shortSocketTempDir(t, "gc-status-"), "bright-lights")
@@ -1299,6 +1319,14 @@ func TestControllerStatusGuidance(t *testing.T) {
 			want: []string{
 				"Authority: standalone controller PID 1234",
 				"Next: gc stop /tmp/city && gc start /tmp/city to hand ownership to the supervisor",
+			},
+		},
+		{
+			name: "standalone running under a process manager",
+			ctrl: ControllerJSON{Mode: "standalone", PID: 7, Running: true, ProcessManaged: true},
+			want: []string{
+				"Authority: standalone controller PID 7, owned by its process manager (container runtime or service manager)",
+				"Lifecycle: stop or restart this city through that process manager, not gc stop",
 			},
 		},
 		{
