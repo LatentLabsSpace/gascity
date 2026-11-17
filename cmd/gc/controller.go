@@ -93,17 +93,32 @@ func (m controllerHostingMode) known() bool {
 type controllerIdentityReply struct {
 	PID         int                   `json:"pid"`
 	HostingMode controllerHostingMode `json:"hosting_mode"`
-	// ProcessManaged reports that an outside process manager owns this
-	// controller's lifecycle: it is PID 1, or a direct child of PID 1 (a
-	// container runtime's init, or a service manager). Stopping it ends the
-	// managed process; nothing hands it over to the supervisor afterwards.
-	ProcessManaged bool `json:"process_managed,omitempty"`
+	// ProcessManager names the outside process manager that owns this
+	// controller's lifecycle (a container runtime or service manager), as
+	// declared by the deployment through GC_PROCESS_MANAGER. Stopping such a
+	// controller ends the managed process; nothing hands it over to the
+	// supervisor afterwards. Empty when the deployment declares none.
+	ProcessManager string `json:"process_manager,omitempty"`
 }
 
-// controllerProcessManagedHook reports whether this process is owned by init
-// or a service manager. Indirected for tests.
-var controllerProcessManagedHook = func() bool {
-	return os.Getpid() == 1 || os.Getppid() == 1
+// processManagerEnv is how a deployment declares that an outside process
+// manager owns the controller, e.g. GC_PROCESS_MANAGER=docker in a container
+// image whose entrypoint runs "gc start --foreground", or
+// GC_PROCESS_MANAGER=systemd in a service unit. It is an explicit contract
+// rather than an inference from process ancestry: a wrapper shell hides a
+// managed controller from its init, and a hand-started controller orphaned
+// to PID 1 has no manager at all.
+const processManagerEnv = "GC_PROCESS_MANAGER"
+
+// controllerProcessManager returns the process manager the deployment
+// declared for this controller, or "" when it declared none. The value is
+// a display name, so it is trimmed and capped.
+func controllerProcessManager(getenv func(string) string) string {
+	name := strings.TrimSpace(getenv(processManagerEnv))
+	if len(name) > 64 {
+		name = name[:64]
+	}
+	return name
 }
 
 type sessionCircuitResetRequest struct {
@@ -223,7 +238,7 @@ func handleControllerConn(
 		case line == "ping":
 			fmt.Fprintf(conn, "%d\n", os.Getpid()) //nolint:errcheck // best-effort
 		case line == controllerIdentityCommand:
-			writeJSONLine(conn, controllerIdentityReply{PID: os.Getpid(), HostingMode: hostingMode, ProcessManaged: controllerProcessManagedHook()})
+			writeJSONLine(conn, controllerIdentityReply{PID: os.Getpid(), HostingMode: hostingMode, ProcessManager: controllerProcessManager(os.Getenv)})
 		case line == "poke":
 			// Non-blocking send: triggers immediate reconciler tick for
 			// event-driven wake after sling assigns work.

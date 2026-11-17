@@ -4676,6 +4676,13 @@ gc supervisor run
 Shows a city-wide overview: controller state, suspension,
 all agents with running status, rigs, and a summary count.
 
+A standalone controller whose lifecycle belongs to an outside process
+manager (a container whose entrypoint runs "gc start --foreground", or a
+service unit) should run with GC_PROCESS_MANAGER set to that manager's
+name, for example GC_PROCESS_MANAGER=docker. Status then names the manager
+and prints no supervisor hand-off step, because stopping such a controller
+ends the container or unit before anything can start it again.
+
 ```
 gc status [path|name] [flags]
 ```

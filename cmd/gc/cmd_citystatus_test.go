@@ -843,23 +843,107 @@ func TestControllerStatusForCityFallsBackToStandaloneWhenRegisteredSupervisorDow
 	}
 }
 
-func TestControllerStatusForCityCarriesProcessManaged(t *testing.T) {
+func TestControllerStatusForCityCarriesProcessManager(t *testing.T) {
 	t.Setenv("GC_HOME", filepath.Join(t.TempDir(), "gc-home"))
 	cityPath := filepath.Join(shortSocketTempDir(t, "gc-status-"), "bright-lights")
-	startFakeControllerSocket(t, cityPath, `{"pid":7,"hosting_mode":"standalone","process_managed":true}`+"\n")
+	startFakeControllerSocket(t, cityPath, `{"pid":7,"hosting_mode":"standalone","process_manager":"docker"}`+"\n")
 
 	oldAlive := supervisorAliveHook
 	supervisorAliveHook = func() int { return 0 }
 	t.Cleanup(func() { supervisorAliveHook = oldAlive })
 
 	got := controllerStatusForCity(cityPath)
-	if got.Mode != "standalone" || !got.Running || got.PID != 7 || !got.ProcessManaged {
-		t.Fatalf("controllerStatusForCity = %+v, want running process-managed standalone PID 7", got)
+	if got.Mode != "standalone" || !got.Running || got.PID != 7 || got.ProcessManager != "docker" {
+		t.Fatalf("controllerStatusForCity = %+v, want running standalone PID 7 managed by docker", got)
 	}
 	for _, line := range controllerStatusGuidance(got, cityPath) {
 		if strings.HasPrefix(line, "Next:") {
 			t.Fatalf("process-managed standalone controller got a Next: hint %q", line)
 		}
+	}
+}
+
+// startRealControllerSocket serves the city's controller socket with the
+// production connection handler, so a test sees the identity the controller
+// itself produces from its environment.
+func startRealControllerSocket(t *testing.T, cityPath string) {
+	t.Helper()
+	sockPath := controllerSocketPath(cityPath)
+	if err := os.MkdirAll(filepath.Dir(sockPath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	lis, err := net.Listen("unix", sockPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		_ = lis.Close()
+		_ = os.Remove(sockPath)
+	})
+	go func() {
+		for {
+			conn, acceptErr := lis.Accept()
+			if acceptErr != nil {
+				return
+			}
+			go handleControllerConn(conn, cityPath, controllerHostingStandalone, func() {}, nil, nil, nil, nil, nil, nil)
+		}
+	}()
+}
+
+// TestControllerStatusGuidanceFollowsDeclaredProcessManager drives the real
+// identity producer through to the status guidance. Ownership comes only from
+// GC_PROCESS_MANAGER, never from process ancestry: a controller behind a
+// wrapper shell inherits the declaration from its deployment, and a
+// hand-started controller (orphaned to PID 1 or not) declares none and keeps
+// the supervisor hand-off hint.
+func TestControllerStatusGuidanceFollowsDeclaredProcessManager(t *testing.T) {
+	for _, tc := range []struct {
+		name        string
+		env         string
+		wantManager string
+		wantNext    bool
+	}{
+		{name: "declared by the deployment", env: "docker", wantManager: "docker"},
+		{name: "declared with surrounding space", env: "  systemd \n", wantManager: "systemd"},
+		{name: "not declared", env: "", wantNext: true},
+		{name: "blank declaration", env: "   ", wantNext: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Setenv("GC_HOME", filepath.Join(t.TempDir(), "gc-home"))
+			t.Setenv(processManagerEnv, tc.env)
+			cityPath := filepath.Join(shortSocketTempDir(t, "gc-status-"), "bright-lights")
+			startRealControllerSocket(t, cityPath)
+
+			oldAlive := supervisorAliveHook
+			supervisorAliveHook = func() int { return 0 }
+			t.Cleanup(func() { supervisorAliveHook = oldAlive })
+
+			got := controllerStatusForCity(cityPath)
+			if got.Mode != "standalone" || !got.Running || got.PID != os.Getpid() {
+				t.Fatalf("controllerStatusForCity = %+v, want running standalone PID %d", got, os.Getpid())
+			}
+			if got.ProcessManager != tc.wantManager {
+				t.Fatalf("ProcessManager = %q, want %q", got.ProcessManager, tc.wantManager)
+			}
+			lines := controllerStatusGuidance(got, cityPath)
+			var sawNext, sawLifecycle bool
+			for _, line := range lines {
+				sawNext = sawNext || strings.HasPrefix(line, "Next:")
+				sawLifecycle = sawLifecycle || strings.HasPrefix(line, "Lifecycle:")
+			}
+			if sawNext != tc.wantNext || sawLifecycle == tc.wantNext {
+				t.Fatalf("guidance = %q, want Next: %v and Lifecycle: %v", lines, tc.wantNext, !tc.wantNext)
+			}
+		})
+	}
+}
+
+func TestControllerProcessManagerCapsLongNames(t *testing.T) {
+	long := strings.Repeat("m", 100)
+	got := controllerProcessManager(func(string) string { return long })
+	if len(got) != 64 {
+		t.Fatalf("len(controllerProcessManager) = %d, want 64", len(got))
 	}
 }
 
@@ -1322,11 +1406,11 @@ func TestControllerStatusGuidance(t *testing.T) {
 			},
 		},
 		{
-			name: "standalone running under a process manager",
-			ctrl: ControllerJSON{Mode: "standalone", PID: 7, Running: true, ProcessManaged: true},
+			name: "standalone running under a declared process manager",
+			ctrl: ControllerJSON{Mode: "standalone", PID: 7, Running: true, ProcessManager: "docker"},
 			want: []string{
-				"Authority: standalone controller PID 7, owned by its process manager (container runtime or service manager)",
-				"Lifecycle: stop or restart this city through that process manager, not gc stop",
+				`Authority: standalone controller PID 7, owned by process manager "docker"`,
+				`Lifecycle: stop or restart this city through "docker", not gc stop`,
 			},
 		},
 		{

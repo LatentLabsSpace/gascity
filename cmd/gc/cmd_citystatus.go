@@ -56,10 +56,11 @@ type ControllerJSON struct {
 	PID     int    `json:"pid,omitempty"`
 	Mode    string `json:"mode,omitempty"`
 	Status  string `json:"status,omitempty"`
-	// ProcessManaged is true when an outside process manager (a container
-	// runtime or service manager) owns the controller, so gc must not
-	// suggest stopping it to hand it over.
-	ProcessManaged bool `json:"process_managed,omitempty"`
+	// ProcessManager names the outside process manager (a container runtime
+	// or service manager) that the deployment declared owns the controller,
+	// through GC_PROCESS_MANAGER. When set, gc must not suggest stopping the
+	// controller to hand it over.
+	ProcessManager string `json:"process_manager,omitempty"`
 }
 
 // StatusAgentJSON represents an agent in the JSON status output.
@@ -142,7 +143,14 @@ func newStatusCmd(stdout, stderr io.Writer) *cobra.Command {
 		Use:   "status [path|name]",
 		Short: "Show city-wide status overview",
 		Long: `Shows a city-wide overview: controller state, suspension,
-all agents with running status, rigs, and a summary count.`,
+all agents with running status, rigs, and a summary count.
+
+A standalone controller whose lifecycle belongs to an outside process
+manager (a container whose entrypoint runs "gc start --foreground", or a
+service unit) should run with GC_PROCESS_MANAGER set to that manager's
+name, for example GC_PROCESS_MANAGER=docker. Status then names the manager
+and prints no supervisor hand-off step, because stopping such a controller
+ends the container or unit before anything can start it again.`,
 		Args:              cobra.MaximumNArgs(1),
 		ValidArgsFunction: completeCityNames,
 		RunE: func(_ *cobra.Command, args []string) error {
@@ -678,11 +686,11 @@ func controllerStatusForCity(cityPath string) ControllerJSON {
 				// to the supervisor observed immediately before the retry.
 				mode = controllerHostingSupervisor
 			}
-			return ControllerJSON{Running: true, PID: identity.PID, Mode: string(mode), ProcessManaged: identity.ProcessManaged}
+			return ControllerJSON{Running: true, PID: identity.PID, Mode: string(mode), ProcessManager: identity.ProcessManager}
 		}
 	}
 	if identity := probeControllerIdentity(cityPath); identity.PID != 0 {
-		return ControllerJSON{Running: true, PID: identity.PID, Mode: string(identity.HostingMode), ProcessManaged: identity.ProcessManaged}
+		return ControllerJSON{Running: true, PID: identity.PID, Mode: string(identity.HostingMode), ProcessManager: identity.ProcessManager}
 	}
 	if err == nil && registered {
 		return ControllerJSON{Mode: "supervisor"}
@@ -761,14 +769,14 @@ func controllerStatusGuidance(ctrl ControllerJSON, cityPath string) []string {
 		if ctrl.PID != 0 {
 			authority = fmt.Sprintf("Authority: standalone controller PID %d", ctrl.PID)
 		}
-		if ctrl.ProcessManaged {
-			// A container runtime or service manager owns this process. The
-			// supervisor hand-off below would only stop it, ending the
-			// container or unit; agents read status output as instructions,
-			// so print no "Next:" step here at all.
+		if ctrl.ProcessManager != "" {
+			// The deployment declared that a container runtime or service
+			// manager owns this process. The supervisor hand-off below would
+			// only stop it, ending the container or unit; agents read status
+			// output as instructions, so print no "Next:" step here at all.
 			return []string{
-				authority + ", owned by its process manager (container runtime or service manager)",
-				"Lifecycle: stop or restart this city through that process manager, not gc stop",
+				fmt.Sprintf("%s, owned by process manager %q", authority, ctrl.ProcessManager),
+				fmt.Sprintf("Lifecycle: stop or restart this city through %q, not gc stop", ctrl.ProcessManager),
 			}
 		}
 		return []string{
