@@ -4679,9 +4679,12 @@ all agents with running status, rigs, and a summary count.
 A standalone controller whose lifecycle belongs to an outside process
 manager (a container whose entrypoint runs "gc start --foreground", or a
 service unit) should run with GC_PROCESS_MANAGER set to that manager's
-name, for example GC_PROCESS_MANAGER=docker. Status then names the manager
-and prints no supervisor hand-off step, because stopping such a controller
-ends the container or unit before anything can start it again.
+name and GC_PROCESS_MANAGER_CITY set to the city's path, for example
+GC_PROCESS_MANAGER=docker GC_PROCESS_MANAGER_CITY=/city. Status then names
+the manager and prints no supervisor hand-off step, because stopping such a
+controller ends the container or unit before anything can start it again.
+The declaration covers only the named city: another city started from the
+same environment (an agent's test city, say) keeps the hand-off step.
 
 ```
 gc status [path|name] [flags]

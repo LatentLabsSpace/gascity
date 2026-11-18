@@ -893,26 +893,34 @@ func startRealControllerSocket(t *testing.T, cityPath string) {
 
 // TestControllerStatusGuidanceFollowsDeclaredProcessManager drives the real
 // identity producer through to the status guidance. Ownership comes only from
-// GC_PROCESS_MANAGER, never from process ancestry: a controller behind a
-// wrapper shell inherits the declaration from its deployment, and a
-// hand-started controller (orphaned to PID 1 or not) declares none and keeps
-// the supervisor hand-off hint.
+// GC_PROCESS_MANAGER bound to this city by GC_PROCESS_MANAGER_CITY, never from
+// process ancestry: a controller behind a wrapper shell inherits the
+// declaration from its deployment, a hand-started controller declares none,
+// and a nested city started from the managed city's environment inherits a
+// declaration for another path and keeps the supervisor hand-off hint.
 func TestControllerStatusGuidanceFollowsDeclaredProcessManager(t *testing.T) {
 	for _, tc := range []struct {
 		name        string
-		env         string
+		manager     string
+		city        string // "self" is replaced by the test city's path
 		wantManager string
-		wantNext    bool
 	}{
-		{name: "declared by the deployment", env: "docker", wantManager: "docker"},
-		{name: "declared with surrounding space", env: "  systemd \n", wantManager: "systemd"},
-		{name: "not declared", env: "", wantNext: true},
-		{name: "blank declaration", env: "   ", wantNext: true},
+		{name: "declared for this city", manager: "docker", city: "self", wantManager: "docker"},
+		{name: "declared with surrounding space", manager: "  systemd \n", city: "self", wantManager: "systemd"},
+		{name: "nested city inherits another city's declaration", manager: "docker", city: "/city"},
+		{name: "declared without a city", manager: "docker", city: ""},
+		{name: "not declared", manager: "", city: "self"},
+		{name: "blank declaration", manager: "   ", city: "self"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Setenv("GC_HOME", filepath.Join(t.TempDir(), "gc-home"))
-			t.Setenv(processManagerEnv, tc.env)
 			cityPath := filepath.Join(shortSocketTempDir(t, "gc-status-"), "bright-lights")
+			declaredCity := tc.city
+			if declaredCity == "self" {
+				declaredCity = cityPath
+			}
+			t.Setenv(processManagerEnv, tc.manager)
+			t.Setenv(processManagerCityEnv, declaredCity)
 			startRealControllerSocket(t, cityPath)
 
 			oldAlive := supervisorAliveHook
@@ -926,14 +934,15 @@ func TestControllerStatusGuidanceFollowsDeclaredProcessManager(t *testing.T) {
 			if got.ProcessManager != tc.wantManager {
 				t.Fatalf("ProcessManager = %q, want %q", got.ProcessManager, tc.wantManager)
 			}
+			wantNext := tc.wantManager == ""
 			lines := controllerStatusGuidance(got, cityPath)
 			var sawNext, sawLifecycle bool
 			for _, line := range lines {
 				sawNext = sawNext || strings.HasPrefix(line, "Next:")
 				sawLifecycle = sawLifecycle || strings.HasPrefix(line, "Lifecycle:")
 			}
-			if sawNext != tc.wantNext || sawLifecycle == tc.wantNext {
-				t.Fatalf("guidance = %q, want Next: %v and Lifecycle: %v", lines, tc.wantNext, !tc.wantNext)
+			if sawNext != wantNext || sawLifecycle == wantNext {
+				t.Fatalf("guidance = %q, want Next: %v and Lifecycle: %v", lines, wantNext, !wantNext)
 			}
 		})
 	}
@@ -941,7 +950,13 @@ func TestControllerStatusGuidanceFollowsDeclaredProcessManager(t *testing.T) {
 
 func TestControllerProcessManagerCapsLongNames(t *testing.T) {
 	long := strings.Repeat("m", 100)
-	got := controllerProcessManager(func(string) string { return long })
+	cityPath := t.TempDir()
+	got := controllerProcessManager(func(key string) string {
+		if key == processManagerCityEnv {
+			return cityPath
+		}
+		return long
+	}, cityPath)
 	if len(got) != 64 {
 		t.Fatalf("len(controllerProcessManager) = %d, want 64", len(got))
 	}

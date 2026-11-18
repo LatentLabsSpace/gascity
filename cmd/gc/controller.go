@@ -101,20 +101,39 @@ type controllerIdentityReply struct {
 	ProcessManager string `json:"process_manager,omitempty"`
 }
 
-// processManagerEnv is how a deployment declares that an outside process
-// manager owns the controller, e.g. GC_PROCESS_MANAGER=docker in a container
-// image whose entrypoint runs "gc start --foreground", or
+// processManagerEnv and processManagerCityEnv are how a deployment declares
+// that an outside process manager owns a city's controller, e.g.
+// GC_PROCESS_MANAGER=docker and GC_PROCESS_MANAGER_CITY=/city in a container
+// image whose entrypoint runs "gc start --foreground /city", or
 // GC_PROCESS_MANAGER=systemd in a service unit. It is an explicit contract
 // rather than an inference from process ancestry: a wrapper shell hides a
 // managed controller from its init, and a hand-started controller orphaned
 // to PID 1 has no manager at all.
-const processManagerEnv = "GC_PROCESS_MANAGER"
+//
+// The declaration must name the city it covers. Agent sessions and other
+// children of the managed controller inherit its environment, so a separate
+// city one of them starts (a test city, an isolated workflow) sees the same
+// variables; binding them to the managed city's path keeps that controller
+// from claiming a manager that does not own it. Two controllers cannot serve
+// one city path at once (controller.lock), so the binding is unambiguous.
+const (
+	processManagerEnv     = "GC_PROCESS_MANAGER"
+	processManagerCityEnv = "GC_PROCESS_MANAGER_CITY"
+)
 
 // controllerProcessManager returns the process manager the deployment
-// declared for this controller, or "" when it declared none. The value is
-// a display name, so it is trimmed and capped.
-func controllerProcessManager(getenv func(string) string) string {
+// declared for the controller of cityPath, or "" when it declared none or
+// declared one for a different city. The value is a display name, so it is
+// trimmed and capped.
+func controllerProcessManager(getenv func(string) string, cityPath string) string {
 	name := strings.TrimSpace(getenv(processManagerEnv))
+	if name == "" {
+		return ""
+	}
+	declaredCity := strings.TrimSpace(getenv(processManagerCityEnv))
+	if declaredCity == "" || !pathutil.SamePath(declaredCity, cityPath) {
+		return ""
+	}
 	if len(name) > 64 {
 		name = name[:64]
 	}
@@ -238,7 +257,7 @@ func handleControllerConn(
 		case line == "ping":
 			fmt.Fprintf(conn, "%d\n", os.Getpid()) //nolint:errcheck // best-effort
 		case line == controllerIdentityCommand:
-			writeJSONLine(conn, controllerIdentityReply{PID: os.Getpid(), HostingMode: hostingMode, ProcessManager: controllerProcessManager(os.Getenv)})
+			writeJSONLine(conn, controllerIdentityReply{PID: os.Getpid(), HostingMode: hostingMode, ProcessManager: controllerProcessManager(os.Getenv, cityPath)})
 		case line == "poke":
 			// Non-blocking send: triggers immediate reconciler tick for
 			// event-driven wake after sling assigns work.
